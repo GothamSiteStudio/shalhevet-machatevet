@@ -1,0 +1,39 @@
+{
+  "expo": {
+    "name": "שלהבת מחטבת",
+    "slug": "shalhevet-mehatevet",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/logo.png",
+    "userInterfaceStyle": "dark",
+    "backgroundColor": "#111111",
+    "splash": {
+      "image": "./assets/logo.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#111111"
+    },
+    "assetBundlePatterns": ["**/*"],
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.shalhevet.mehatevet"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/logo.png",
+        "backgroundColor": "#111111"
+      },
+      "package": "com.shalhevet.mehatevet"
+    },
+    "web": {
+      "favicon": "./assets/logo.png"
+    },
+    "plugins": [
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "האפליקציה צריכה גישה לגלריה לצילום ארוחות"
+        }
+      ]
+    ]
+  }
+}

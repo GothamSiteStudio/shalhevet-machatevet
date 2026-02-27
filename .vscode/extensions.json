@@ -1,0 +1,23 @@
+{
+  "recommendations": [
+    "esbenp.prettier-vscode",
+    "dbaeumer.vscode-eslint",
+    "bradlc.vscode-tailwindcss",
+    "ms-vscode.vscode-typescript-next",
+    "formulahendry.auto-rename-tag",
+    "dsznajder.es7-react-js-snippets",
+    "ms-azuretools.vscode-docker",
+    "christian-kohler.path-intellisense",
+    "usernamehw.errorlens",
+    "msjsdiag.vscode-react-native",
+    "orta.vscode-jest",
+    "firsttris.vscode-jest-runner",
+    "deque-systems.vscode-axe-linter",
+    "eamodio.gitlens",
+    "streetsidesoftware.code-spell-checker",
+    "PKief.material-icon-theme",
+    "GraphQL.vscode-graphql-syntax",
+    "humao.rest-client"
+  ],
+  "unwantedRecommendations": []
+}
