@@ -31,6 +31,12 @@ const {
 } = require("../utils/db");
 const { authenticate } = require("../middleware/auth");
 
+function asyncHandler(handler) {
+  return (req, res, next) => {
+    Promise.resolve(handler(req, res, next)).catch(next);
+  };
+}
+
 // כל ה-routes דורשים כניסה
 router.use(authenticate);
 
@@ -41,29 +47,48 @@ router.get("/me", (req, res) => {
 });
 
 // ─── GET /api/users/plans - כל התוכניות שלי ─────────────────────────────────
-router.get("/plans", (req, res) => {
-  res.json({
-    success: true,
-    goals: getClientGoals(req.user.id),
-    nutritionPlan: getNutritionPlan(req.user.id),
-    workoutPlan: getWorkoutPlan(req.user.id),
-  });
-});
+router.get(
+  "/plans",
+  asyncHandler(async (req, res) => {
+    const [goals, nutritionPlan, workoutPlan] = await Promise.all([
+      getClientGoals(req.user.id),
+      getNutritionPlan(req.user.id),
+      getWorkoutPlan(req.user.id),
+    ]);
+
+    res.json({ success: true, goals, nutritionPlan, workoutPlan });
+  }),
+);
 
 // ─── GET /api/users/goals - היעדים שלי ──────────────────────────────────────
-router.get("/goals", (req, res) => {
-  res.json({ success: true, goals: getClientGoals(req.user.id) });
-});
+router.get(
+  "/goals",
+  asyncHandler(async (req, res) => {
+    res.json({ success: true, goals: await getClientGoals(req.user.id) });
+  }),
+);
 
 // ─── GET /api/users/nutrition-plan - התפריט האישי שלי ─────────────────────
-router.get("/nutrition-plan", (req, res) => {
-  res.json({ success: true, nutritionPlan: getNutritionPlan(req.user.id) });
-});
+router.get(
+  "/nutrition-plan",
+  asyncHandler(async (req, res) => {
+    res.json({
+      success: true,
+      nutritionPlan: await getNutritionPlan(req.user.id),
+    });
+  }),
+);
 
 // ─── GET /api/users/workout-plan - תוכנית האימון שלי ───────────────────────
-router.get("/workout-plan", (req, res) => {
-  res.json({ success: true, workoutPlan: getWorkoutPlan(req.user.id) });
-});
+router.get(
+  "/workout-plan",
+  asyncHandler(async (req, res) => {
+    res.json({
+      success: true,
+      workoutPlan: await getWorkoutPlan(req.user.id),
+    });
+  }),
+);
 
 // ─── PUT /api/users/me - עדכון פרטים ─────────────────────────────────────────
 router.put("/me", async (req, res) => {
@@ -79,7 +104,7 @@ router.put("/me", async (req, res) => {
     if (goal) updates.goal = goal;
     if (activityLevel) updates.activityLevel = activityLevel;
 
-    const updated = updateUser(req.user.id, updates);
+    const updated = await updateUser(req.user.id, updates);
     const { password, ...safeUser } = updated;
 
     res.json({ success: true, user: safeUser });
@@ -89,10 +114,13 @@ router.put("/me", async (req, res) => {
 });
 
 // ─── GET /api/users/weight - היסטוריית משקל ─────────────────────────────────
-router.get("/weight", (req, res) => {
-  const history = getWeightHistory(req.user.id);
-  res.json({ success: true, history });
-});
+router.get(
+  "/weight",
+  asyncHandler(async (req, res) => {
+    const history = await getWeightHistory(req.user.id);
+    res.json({ success: true, history });
+  }),
+);
 
 // ─── POST /api/users/weight - עדכון משקל ─────────────────────────────────────
 router.post("/weight", async (req, res) => {
@@ -104,10 +132,10 @@ router.post("/weight", async (req, res) => {
     }
 
     // שמור בהיסטוריה
-    const entry = addWeightEntry(req.user.id, parseFloat(weight));
+    const entry = await addWeightEntry(req.user.id, parseFloat(weight));
 
     // עדכן גם בפרופיל המשתמשת
-    updateUser(req.user.id, { weight: parseFloat(weight) });
+    await updateUser(req.user.id, { weight: parseFloat(weight) });
 
     res.json({
       success: true,
@@ -120,10 +148,13 @@ router.post("/weight", async (req, res) => {
 });
 
 // ─── GET /api/users/updates - עדכונים שלי ────────────────────────────────────
-router.get("/updates", (req, res) => {
-  const updates = getUpdates(req.user.id);
-  res.json({ success: true, updates });
-});
+router.get(
+  "/updates",
+  asyncHandler(async (req, res) => {
+    const updates = await getUpdates(req.user.id);
+    res.json({ success: true, updates });
+  }),
+);
 
 // ─── POST /api/users/updates - שלח עדכון למאמנת ──────────────────────────────
 router.post("/updates", async (req, res) => {
@@ -134,7 +165,7 @@ router.post("/updates", async (req, res) => {
       return res.status(400).json({ error: "נא לכתוב עדכון" });
     }
 
-    const update = addUpdate(req.user.id, text.trim());
+    const update = await addUpdate(req.user.id, text.trim());
 
     res.json({
       success: true,
@@ -147,10 +178,13 @@ router.post("/updates", async (req, res) => {
 });
 
 // ─── GET /api/users/meetings - הפגישות שלי ───────────────────────────────────
-router.get("/meetings", (req, res) => {
-  const meetings = getMeetings(req.user.id);
-  res.json({ success: true, meetings });
-});
+router.get(
+  "/meetings",
+  asyncHandler(async (req, res) => {
+    const meetings = await getMeetings(req.user.id);
+    res.json({ success: true, meetings });
+  }),
+);
 
 // ─── POST /api/users/meetings - בקש פגישה ────────────────────────────────────
 router.post("/meetings", async (req, res) => {
@@ -161,7 +195,7 @@ router.post("/meetings", async (req, res) => {
       return res.status(400).json({ error: "נא לציין תאריך מבוקש" });
     }
 
-    const meeting = addMeeting(req.user.id, requestedDate, notes || "");
+    const meeting = await addMeeting(req.user.id, requestedDate, notes || "");
 
     res.json({
       success: true,
@@ -174,10 +208,13 @@ router.post("/meetings", async (req, res) => {
 });
 
 // ─── GET /api/users/messages - הודעות ────────────────────────────────────────
-router.get("/messages", (req, res) => {
-  const messages = getMessages(req.user.id);
-  res.json({ success: true, messages });
-});
+router.get(
+  "/messages",
+  asyncHandler(async (req, res) => {
+    const messages = await getMessages(req.user.id);
+    res.json({ success: true, messages });
+  }),
+);
 
 // ─── POST /api/users/messages - שלח הודעה ────────────────────────────────────
 router.post("/messages", async (req, res) => {
@@ -188,7 +225,7 @@ router.post("/messages", async (req, res) => {
       return res.status(400).json({ error: "נא לכתוב הודעה" });
     }
 
-    const message = addMessage(
+    const message = await addMessage(
       req.user.id,
       "coach-shalhevet",
       text.trim(),
@@ -228,7 +265,7 @@ router.put("/password", async (req, res) => {
 
     // הצפן ושמור
     const hashedPassword = await bcrypt.hash(newPassword, 10);
-    updateUser(req.user.id, { password: hashedPassword });
+    await updateUser(req.user.id, { password: hashedPassword });
 
     res.json({ success: true, message: "הסיסמה עודכנה בהצלחה ✅" });
   } catch (err) {

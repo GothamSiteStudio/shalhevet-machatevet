@@ -15,7 +15,7 @@ const jwt = require('jsonwebtoken');
 const { getUserById } = require('../utils/db');
 
 // ─── בדיקת אימות בסיסית ─────────────────────────────────────────────────────
-function authenticate(req, res, next) {
+async function authenticate(req, res, next) {
   try {
     // קח את הטוקן מה-Header של הבקשה
     const authHeader = req.headers.authorization;
@@ -34,7 +34,7 @@ function authenticate(req, res, next) {
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
     
     // מצא את המשתמשת
-    const user = getUserById(decoded.id);
+    const user = await getUserById(decoded.id);
     if (!user) {
       return res.status(401).json({
         error: 'משתמשת לא נמצאה',
@@ -53,9 +53,16 @@ function authenticate(req, res, next) {
         message: 'נא להתחבר מחדש'
       });
     }
-    return res.status(401).json({
-      error: 'טוקן לא תקף',
-      message: 'נא להתחבר מחדש'
+    if (err.name === 'JsonWebTokenError' || err.name === 'NotBeforeError') {
+      return res.status(401).json({
+        error: 'טוקן לא תקף',
+        message: 'נא להתחבר מחדש'
+      });
+    }
+    console.error('❌ שגיאת אימות:', err);
+    return res.status(500).json({
+      error: 'שגיאת שרת',
+      message: 'לא הצלחנו לאמת את המשתמשת'
     });
   }
 }

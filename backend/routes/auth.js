@@ -44,7 +44,7 @@ router.post('/register', async (req, res) => {
     }
     
     // בדוק שהאימייל לא קיים כבר
-    const existingUser = getUserByEmail(email);
+    const existingUser = await getUserByEmail(email);
     if (existingUser) {
       return res.status(409).json({ error: 'אימייל זה כבר רשום במערכת' });
     }
@@ -54,7 +54,7 @@ router.post('/register', async (req, res) => {
     const hashedPassword = await bcrypt.hash(password, 10);
     
     // צור משתמשת חדשה
-    const newUser = createUser({
+    const newUser = await createUser({
       id: uuidv4(), // מזהה ייחודי אקראי
       name: name.trim(),
       email: email.toLowerCase().trim(),
@@ -100,7 +100,7 @@ router.post('/login', async (req, res) => {
     }
     
     // מצא את המשתמשת לפי אימייל
-    const user = getUserByEmail(email);
+    const user = await getUserByEmail(email);
     if (!user) {
       return res.status(401).json({ error: 'אימייל או סיסמה שגויים' });
     }

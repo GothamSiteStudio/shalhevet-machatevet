@@ -6,12 +6,14 @@
  * ⚙️ מצבים אפשריים:
  *   'local'      → רשת WiFi משותפת (המחשב והטלפון על אותו WiFi)
  *   'tunnel'     → ngrok tunnel (עובד מכל מקום ברשת, גם ללא WiFi משותף)
- *   'production' → שרת ענן (Render / Railway) - לאחר פרסום
+ *   'production' → שרת ענן (Railway) - לאחר פרסום
  */
 
 // ─── 🔧 שנה את השורה הזו בלבד ──────────────────────────────────────────────
-const ENV = 'local'; // 'local' | 'tunnel' | 'production'
+const MANUAL_ENV = 'local'; // 'local' | 'tunnel' | 'production'
 // ─────────────────────────────────────────────────────────────────────────────
+
+const ENV = process.env.EXPO_PUBLIC_APP_ENV || MANUAL_ENV;
 
 const CONFIG = {
   local: {
@@ -28,13 +30,15 @@ const CONFIG = {
   },
 
   production: {
-    // כתובת שרת הענן לאחר פרסום
-    API_URL: 'https://shalhevet-api.onrender.com/api',
-    label: 'Production',
+    // כתובת שרת הענן לאחר פרסום ל-Railway
+    API_URL:
+      process.env.EXPO_PUBLIC_API_URL ||
+      'https://REPLACE_WITH_RAILWAY_URL.up.railway.app/api',
+    label: 'Production (Railway)',
   },
 };
 
-const currentConfig = CONFIG[ENV];
+const currentConfig = CONFIG[ENV] || CONFIG.local;
 
 if (__DEV__) {
   console.log(`\n🔥 שלהבת מחטבת - מצב חיבור: ${currentConfig.label}`);

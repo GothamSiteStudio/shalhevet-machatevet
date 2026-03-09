@@ -30,12 +30,14 @@ const {
   getWorkoutPlan,
   upsertWorkoutPlan,
   getWeightHistory,
+  getUpdates,
+  getMeetings,
+  getMessages,
   getAllUpdates,
   getAllMeetings,
   updateMeetingStatus,
   getAllMessages,
   addMessage,
-  readDB,
 } = require("../utils/db");
 const { authenticate, requireCoach } = require("../middleware/auth");
 
@@ -43,14 +45,20 @@ const { authenticate, requireCoach } = require("../middleware/auth");
 router.use(authenticate);
 router.use(requireCoach);
 
+function asyncHandler(handler) {
+  return (req, res, next) => {
+    Promise.resolve(handler(req, res, next)).catch(next);
+  };
+}
+
 function createBadRequest(message) {
   const err = new Error(message);
   err.status = 400;
   return err;
 }
 
-function getClientOrNull(userId) {
-  const user = getUserById(userId);
+async function getClientOrNull(userId) {
+  const user = await getUserById(userId);
   return user && user.role === "client" ? user : null;
 }
 
@@ -272,8 +280,8 @@ function buildWorkoutPlanPayload(body) {
 }
 
 // ─── GET /api/coach/clients - כל הלקוחות ────────────────────────────────────
-router.get("/clients", (req, res) => {
-  const allUsers = getAllUsers();
+router.get("/clients", asyncHandler(async (req, res) => {
+  const allUsers = await getAllUsers();
   const clients = allUsers
     .filter((u) => u.role === "client")
     .map(({ password, ...safe }) => safe) // מסיר סיסמאות
@@ -284,25 +292,26 @@ router.get("/clients", (req, res) => {
     count: clients.length,
     clients,
   });
-});
+}));
 
 // ─── GET /api/coach/clients/:id - פרטי לקוחה ─────────────────────────────────
-router.get("/clients/:id", (req, res) => {
-  const user = getClientOrNull(req.params.id);
+router.get("/clients/:id", asyncHandler(async (req, res) => {
+  const user = await getClientOrNull(req.params.id);
 
   if (!user) {
     return res.status(404).json({ error: "לקוחה לא נמצאה" });
   }
 
   const { password, ...safe } = user;
-  const weightHistory = getWeightHistory(user.id);
-  const db = readDB();
-  const updates = db.updates.filter((u) => u.userId === user.id);
-  const meetings = db.meetings.filter((m) => m.userId === user.id);
-  const messages = db.messages.filter((m) => m.userId === user.id);
-  const goals = getClientGoals(user.id);
-  const nutritionPlan = getNutritionPlan(user.id);
-  const workoutPlan = getWorkoutPlan(user.id);
+  const [weightHistory, updates, meetings, messages, goals, nutritionPlan, workoutPlan] = await Promise.all([
+    getWeightHistory(user.id),
+    getUpdates(user.id),
+    getMeetings(user.id),
+    getMessages(user.id),
+    getClientGoals(user.id),
+    getNutritionPlan(user.id),
+    getWorkoutPlan(user.id),
+  ]);
 
   res.json({
     success: true,
@@ -315,45 +324,51 @@ router.get("/clients/:id", (req, res) => {
     nutritionPlan,
     workoutPlan,
   });
-});
+}));
 
 // ─── GET /api/coach/clients/:id/plans - כל תוכניות הלקוחה ──────────────────
-router.get("/clients/:id/plans", (req, res) => {
-  const client = getClientOrNull(req.params.id);
+router.get("/clients/:id/plans", asyncHandler(async (req, res) => {
+  const client = await getClientOrNull(req.params.id);
 
   if (!client) {
     return res.status(404).json({ error: "לקוחה לא נמצאה" });
   }
+
+  const [goals, nutritionPlan, workoutPlan] = await Promise.all([
+    getClientGoals(client.id),
+    getNutritionPlan(client.id),
+    getWorkoutPlan(client.id),
+  ]);
 
   res.json({
     success: true,
-    goals: getClientGoals(client.id),
-    nutritionPlan: getNutritionPlan(client.id),
-    workoutPlan: getWorkoutPlan(client.id),
+    goals,
+    nutritionPlan,
+    workoutPlan,
   });
-});
+}));
 
 // ─── GET /api/coach/clients/:id/goals - יעדי לקוחה ─────────────────────────
-router.get("/clients/:id/goals", (req, res) => {
-  const client = getClientOrNull(req.params.id);
+router.get("/clients/:id/goals", asyncHandler(async (req, res) => {
+  const client = await getClientOrNull(req.params.id);
 
   if (!client) {
     return res.status(404).json({ error: "לקוחה לא נמצאה" });
   }
 
-  res.json({ success: true, goals: getClientGoals(client.id) });
-});
+  res.json({ success: true, goals: await getClientGoals(client.id) });
+}));
 
 // ─── PUT /api/coach/clients/:id/goals - עדכון יעדים ────────────────────────
-router.put("/clients/:id/goals", (req, res) => {
+router.put("/clients/:id/goals", async (req, res) => {
   try {
-    const client = getClientOrNull(req.params.id);
+    const client = await getClientOrNull(req.params.id);
 
     if (!client) {
       return res.status(404).json({ error: "לקוחה לא נמצאה" });
     }
 
-    const goals = upsertClientGoals(client.id, {
+    const goals = await upsertClientGoals(client.id, {
       ...buildGoalsPayload(req.body || {}),
       updatedBy: req.user.id,
     });
@@ -367,26 +382,29 @@ router.put("/clients/:id/goals", (req, res) => {
 });
 
 // ─── GET /api/coach/clients/:id/nutrition-plan - תפריט אישי ───────────────
-router.get("/clients/:id/nutrition-plan", (req, res) => {
-  const client = getClientOrNull(req.params.id);
+router.get("/clients/:id/nutrition-plan", asyncHandler(async (req, res) => {
+  const client = await getClientOrNull(req.params.id);
 
   if (!client) {
     return res.status(404).json({ error: "לקוחה לא נמצאה" });
   }
 
-  res.json({ success: true, nutritionPlan: getNutritionPlan(client.id) });
-});
+  res.json({
+    success: true,
+    nutritionPlan: await getNutritionPlan(client.id),
+  });
+}));
 
 // ─── PUT /api/coach/clients/:id/nutrition-plan - עדכון תפריט אישי ─────────
-router.put("/clients/:id/nutrition-plan", (req, res) => {
+router.put("/clients/:id/nutrition-plan", async (req, res) => {
   try {
-    const client = getClientOrNull(req.params.id);
+    const client = await getClientOrNull(req.params.id);
 
     if (!client) {
       return res.status(404).json({ error: "לקוחה לא נמצאה" });
     }
 
-    const nutritionPlan = upsertNutritionPlan(client.id, {
+    const nutritionPlan = await upsertNutritionPlan(client.id, {
       ...buildNutritionPlanPayload(req.body || {}),
       updatedBy: req.user.id,
     });
@@ -404,26 +422,29 @@ router.put("/clients/:id/nutrition-plan", (req, res) => {
 });
 
 // ─── GET /api/coach/clients/:id/workout-plan - תוכנית אימון ────────────────
-router.get("/clients/:id/workout-plan", (req, res) => {
-  const client = getClientOrNull(req.params.id);
+router.get("/clients/:id/workout-plan", asyncHandler(async (req, res) => {
+  const client = await getClientOrNull(req.params.id);
 
   if (!client) {
     return res.status(404).json({ error: "לקוחה לא נמצאה" });
   }
 
-  res.json({ success: true, workoutPlan: getWorkoutPlan(client.id) });
-});
+  res.json({
+    success: true,
+    workoutPlan: await getWorkoutPlan(client.id),
+  });
+}));
 
 // ─── PUT /api/coach/clients/:id/workout-plan - עדכון תוכנית אימון ──────────
-router.put("/clients/:id/workout-plan", (req, res) => {
+router.put("/clients/:id/workout-plan", async (req, res) => {
   try {
-    const client = getClientOrNull(req.params.id);
+    const client = await getClientOrNull(req.params.id);
 
     if (!client) {
       return res.status(404).json({ error: "לקוחה לא נמצאה" });
     }
 
-    const workoutPlan = upsertWorkoutPlan(client.id, {
+    const workoutPlan = await upsertWorkoutPlan(client.id, {
       ...buildWorkoutPlanPayload(req.body || {}),
       updatedBy: req.user.id,
     });
@@ -443,7 +464,7 @@ router.put("/clients/:id/workout-plan", (req, res) => {
 // ─── PUT /api/coach/clients/:id - עדכון פרטי לקוחה ──────────────────────────
 router.put("/clients/:id", async (req, res) => {
   try {
-    const user = getClientOrNull(req.params.id);
+    const user = await getClientOrNull(req.params.id);
     if (!user) {
       return res.status(404).json({ error: "לקוחה לא נמצאה" });
     }
@@ -477,7 +498,7 @@ router.put("/clients/:id", async (req, res) => {
       updates.password = await bcrypt.hash(newPassword, 10);
     }
 
-    const updated = updateUser(req.params.id, updates);
+    const updated = await updateUser(req.params.id, updates);
     const { password, ...safe } = updated;
 
     res.json({ success: true, message: "פרטי הלקוחה עודכנו ✅", client: safe });
@@ -496,14 +517,14 @@ router.post("/clients", async (req, res) => {
       return res.status(400).json({ error: "שם, אימייל וסיסמה הם שדות חובה" });
     }
 
-    const existing = getUserByEmail(email);
+    const existing = await getUserByEmail(email);
     if (existing) {
       return res.status(409).json({ error: "אימייל זה כבר קיים במערכת" });
     }
 
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    const newClient = createUser({
+    const newClient = await createUser({
       id: uuidv4(),
       name: name.trim(),
       email: email.toLowerCase().trim(),
@@ -535,9 +556,11 @@ router.post("/clients", async (req, res) => {
 });
 
 // ─── GET /api/coach/updates - עדכונים מהלקוחות ──────────────────────────────
-router.get("/updates", (req, res) => {
-  const allUsers = getAllUsers();
-  const updates = getAllUpdates();
+router.get("/updates", asyncHandler(async (req, res) => {
+  const [allUsers, updates] = await Promise.all([
+    getAllUsers(),
+    getAllUpdates(),
+  ]);
 
   // הוסף שם לקוחה לכל עדכון
   const enriched = updates.map((u) => {
@@ -546,12 +569,14 @@ router.get("/updates", (req, res) => {
   });
 
   res.json({ success: true, updates: enriched });
-});
+}));
 
 // ─── GET /api/coach/meetings - בקשות פגישות ──────────────────────────────────
-router.get("/meetings", (req, res) => {
-  const allUsers = getAllUsers();
-  const meetings = getAllMeetings();
+router.get("/meetings", asyncHandler(async (req, res) => {
+  const [allUsers, meetings] = await Promise.all([
+    getAllUsers(),
+    getAllMeetings(),
+  ]);
 
   const enriched = meetings.map((m) => {
     const client = allUsers.find((u) => u.id === m.userId);
@@ -559,10 +584,10 @@ router.get("/meetings", (req, res) => {
   });
 
   res.json({ success: true, meetings: enriched });
-});
+}));
 
 // ─── PUT /api/coach/meetings/:id - אשר/דחה פגישה ────────────────────────────
-router.put("/meetings/:id", (req, res) => {
+router.put("/meetings/:id", asyncHandler(async (req, res) => {
   const { status } = req.body;
   const validStatuses = ["ממתין לאישור", "אושר", "נדחה", "בוטל"];
 
@@ -570,18 +595,20 @@ router.put("/meetings/:id", (req, res) => {
     return res.status(400).json({ error: "סטטוס לא תקין" });
   }
 
-  const meeting = updateMeetingStatus(req.params.id, status);
+  const meeting = await updateMeetingStatus(req.params.id, status);
   if (!meeting) {
     return res.status(404).json({ error: "פגישה לא נמצאה" });
   }
 
   res.json({ success: true, message: `סטטוס פגישה עודכן: ${status}`, meeting });
-});
+}));
 
 // ─── GET /api/coach/messages - כל ההודעות ────────────────────────────────────
-router.get("/messages", (req, res) => {
-  const allUsers = getAllUsers();
-  const messages = getAllMessages();
+router.get("/messages", asyncHandler(async (req, res) => {
+  const [allUsers, messages] = await Promise.all([
+    getAllUsers(),
+    getAllMessages(),
+  ]);
 
   const enriched = messages.map((m) => {
     const client = allUsers.find((u) => u.id === m.userId);
@@ -589,7 +616,7 @@ router.get("/messages", (req, res) => {
   });
 
   res.json({ success: true, messages: enriched });
-});
+}));
 
 // ─── POST /api/coach/messages/:userId - שלח הודעה ללקוחה ─────────────────────
 router.post("/messages/:userId", async (req, res) => {
@@ -601,12 +628,12 @@ router.post("/messages/:userId", async (req, res) => {
       return res.status(400).json({ error: "נא לכתוב הודעה" });
     }
 
-    const client = getUserById(userId);
+    const client = await getUserById(userId);
     if (!client || client.role !== "client") {
       return res.status(404).json({ error: "לקוחה לא נמצאה" });
     }
 
-    const message = addMessage("coach-shalhevet", userId, text.trim(), "coach");
+    const message = await addMessage("coach-shalhevet", userId, text.trim(), "coach");
 
     res.json({
       success: true,
@@ -619,16 +646,18 @@ router.post("/messages/:userId", async (req, res) => {
 });
 
 // ─── GET /api/coach/stats - סטטיסטיקות ──────────────────────────────────────
-router.get("/stats", (req, res) => {
-  const allUsers = getAllUsers();
-  const db = readDB();
+router.get("/stats", asyncHandler(async (req, res) => {
+  const [allUsers, updates, meetings, messages] = await Promise.all([
+    getAllUsers(),
+    getAllUpdates(),
+    getAllMeetings(),
+    getAllMessages(),
+  ]);
 
   const clients = allUsers.filter((u) => u.role === "client");
   const activeClients = clients.filter((u) => u.isActive);
-  const pendingMeetings = db.meetings.filter(
-    (m) => m.status === "ממתין לאישור",
-  );
-  const unreadUpdates = db.updates.filter((u) => !u.readByCoach);
+  const pendingMeetings = meetings.filter((m) => m.status === "ממתין לאישור");
+  const unreadUpdates = updates.filter((u) => !u.readByCoach);
 
   res.json({
     success: true,
@@ -637,11 +666,11 @@ router.get("/stats", (req, res) => {
       activeClients: activeClients.length,
       pendingMeetings: pendingMeetings.length,
       unreadUpdates: unreadUpdates.length,
-      totalUpdates: db.updates.length,
-      totalMeetings: db.meetings.length,
-      totalMessages: db.messages.length,
+      totalUpdates: updates.length,
+      totalMeetings: meetings.length,
+      totalMessages: messages.length,
     },
   });
-});
+}));
 
 module.exports = router;
