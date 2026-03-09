@@ -32,8 +32,7 @@ const CONFIG = {
   production: {
     // כתובת שרת הענן לאחר פרסום ל-Railway
     API_URL:
-      process.env.EXPO_PUBLIC_API_URL ||
-      'https://REPLACE_WITH_RAILWAY_URL.up.railway.app/api',
+      process.env.EXPO_PUBLIC_API_URL || 'https://REPLACE_WITH_RAILWAY_URL.up.railway.app/api',
     label: 'Production (Railway)',
   },
 };

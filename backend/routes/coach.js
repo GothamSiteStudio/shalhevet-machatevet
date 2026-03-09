@@ -280,84 +280,104 @@ function buildWorkoutPlanPayload(body) {
 }
 
 // ─── GET /api/coach/clients - כל הלקוחות ────────────────────────────────────
-router.get("/clients", asyncHandler(async (req, res) => {
-  const allUsers = await getAllUsers();
-  const clients = allUsers
-    .filter((u) => u.role === "client")
-    .map(({ password, ...safe }) => safe) // מסיר סיסמאות
-    .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+router.get(
+  "/clients",
+  asyncHandler(async (req, res) => {
+    const allUsers = await getAllUsers();
+    const clients = allUsers
+      .filter((u) => u.role === "client")
+      .map(({ password, ...safe }) => safe) // מסיר סיסמאות
+      .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
 
-  res.json({
-    success: true,
-    count: clients.length,
-    clients,
-  });
-}));
+    res.json({
+      success: true,
+      count: clients.length,
+      clients,
+    });
+  }),
+);
 
 // ─── GET /api/coach/clients/:id - פרטי לקוחה ─────────────────────────────────
-router.get("/clients/:id", asyncHandler(async (req, res) => {
-  const user = await getClientOrNull(req.params.id);
+router.get(
+  "/clients/:id",
+  asyncHandler(async (req, res) => {
+    const user = await getClientOrNull(req.params.id);
 
-  if (!user) {
-    return res.status(404).json({ error: "לקוחה לא נמצאה" });
-  }
+    if (!user) {
+      return res.status(404).json({ error: "לקוחה לא נמצאה" });
+    }
 
-  const { password, ...safe } = user;
-  const [weightHistory, updates, meetings, messages, goals, nutritionPlan, workoutPlan] = await Promise.all([
-    getWeightHistory(user.id),
-    getUpdates(user.id),
-    getMeetings(user.id),
-    getMessages(user.id),
-    getClientGoals(user.id),
-    getNutritionPlan(user.id),
-    getWorkoutPlan(user.id),
-  ]);
+    const { password, ...safe } = user;
+    const [
+      weightHistory,
+      updates,
+      meetings,
+      messages,
+      goals,
+      nutritionPlan,
+      workoutPlan,
+    ] = await Promise.all([
+      getWeightHistory(user.id),
+      getUpdates(user.id),
+      getMeetings(user.id),
+      getMessages(user.id),
+      getClientGoals(user.id),
+      getNutritionPlan(user.id),
+      getWorkoutPlan(user.id),
+    ]);
 
-  res.json({
-    success: true,
-    client: safe,
-    weightHistory,
-    updates,
-    meetings,
-    messages,
-    goals,
-    nutritionPlan,
-    workoutPlan,
-  });
-}));
+    res.json({
+      success: true,
+      client: safe,
+      weightHistory,
+      updates,
+      meetings,
+      messages,
+      goals,
+      nutritionPlan,
+      workoutPlan,
+    });
+  }),
+);
 
 // ─── GET /api/coach/clients/:id/plans - כל תוכניות הלקוחה ──────────────────
-router.get("/clients/:id/plans", asyncHandler(async (req, res) => {
-  const client = await getClientOrNull(req.params.id);
+router.get(
+  "/clients/:id/plans",
+  asyncHandler(async (req, res) => {
+    const client = await getClientOrNull(req.params.id);
 
-  if (!client) {
-    return res.status(404).json({ error: "לקוחה לא נמצאה" });
-  }
+    if (!client) {
+      return res.status(404).json({ error: "לקוחה לא נמצאה" });
+    }
 
-  const [goals, nutritionPlan, workoutPlan] = await Promise.all([
-    getClientGoals(client.id),
-    getNutritionPlan(client.id),
-    getWorkoutPlan(client.id),
-  ]);
+    const [goals, nutritionPlan, workoutPlan] = await Promise.all([
+      getClientGoals(client.id),
+      getNutritionPlan(client.id),
+      getWorkoutPlan(client.id),
+    ]);
 
-  res.json({
-    success: true,
-    goals,
-    nutritionPlan,
-    workoutPlan,
-  });
-}));
+    res.json({
+      success: true,
+      goals,
+      nutritionPlan,
+      workoutPlan,
+    });
+  }),
+);
 
 // ─── GET /api/coach/clients/:id/goals - יעדי לקוחה ─────────────────────────
-router.get("/clients/:id/goals", asyncHandler(async (req, res) => {
-  const client = await getClientOrNull(req.params.id);
+router.get(
+  "/clients/:id/goals",
+  asyncHandler(async (req, res) => {
+    const client = await getClientOrNull(req.params.id);
 
-  if (!client) {
-    return res.status(404).json({ error: "לקוחה לא נמצאה" });
-  }
+    if (!client) {
+      return res.status(404).json({ error: "לקוחה לא נמצאה" });
+    }
 
-  res.json({ success: true, goals: await getClientGoals(client.id) });
-}));
+    res.json({ success: true, goals: await getClientGoals(client.id) });
+  }),
+);
 
 // ─── PUT /api/coach/clients/:id/goals - עדכון יעדים ────────────────────────
 router.put("/clients/:id/goals", async (req, res) => {
@@ -382,18 +402,21 @@ router.put("/clients/:id/goals", async (req, res) => {
 });
 
 // ─── GET /api/coach/clients/:id/nutrition-plan - תפריט אישי ───────────────
-router.get("/clients/:id/nutrition-plan", asyncHandler(async (req, res) => {
-  const client = await getClientOrNull(req.params.id);
+router.get(
+  "/clients/:id/nutrition-plan",
+  asyncHandler(async (req, res) => {
+    const client = await getClientOrNull(req.params.id);
 
-  if (!client) {
-    return res.status(404).json({ error: "לקוחה לא נמצאה" });
-  }
+    if (!client) {
+      return res.status(404).json({ error: "לקוחה לא נמצאה" });
+    }
 
-  res.json({
-    success: true,
-    nutritionPlan: await getNutritionPlan(client.id),
-  });
-}));
+    res.json({
+      success: true,
+      nutritionPlan: await getNutritionPlan(client.id),
+    });
+  }),
+);
 
 // ─── PUT /api/coach/clients/:id/nutrition-plan - עדכון תפריט אישי ─────────
 router.put("/clients/:id/nutrition-plan", async (req, res) => {
@@ -422,18 +445,21 @@ router.put("/clients/:id/nutrition-plan", async (req, res) => {
 });
 
 // ─── GET /api/coach/clients/:id/workout-plan - תוכנית אימון ────────────────
-router.get("/clients/:id/workout-plan", asyncHandler(async (req, res) => {
-  const client = await getClientOrNull(req.params.id);
+router.get(
+  "/clients/:id/workout-plan",
+  asyncHandler(async (req, res) => {
+    const client = await getClientOrNull(req.params.id);
 
-  if (!client) {
-    return res.status(404).json({ error: "לקוחה לא נמצאה" });
-  }
+    if (!client) {
+      return res.status(404).json({ error: "לקוחה לא נמצאה" });
+    }
 
-  res.json({
-    success: true,
-    workoutPlan: await getWorkoutPlan(client.id),
-  });
-}));
+    res.json({
+      success: true,
+      workoutPlan: await getWorkoutPlan(client.id),
+    });
+  }),
+);
 
 // ─── PUT /api/coach/clients/:id/workout-plan - עדכון תוכנית אימון ──────────
 router.put("/clients/:id/workout-plan", async (req, res) => {
@@ -556,67 +582,83 @@ router.post("/clients", async (req, res) => {
 });
 
 // ─── GET /api/coach/updates - עדכונים מהלקוחות ──────────────────────────────
-router.get("/updates", asyncHandler(async (req, res) => {
-  const [allUsers, updates] = await Promise.all([
-    getAllUsers(),
-    getAllUpdates(),
-  ]);
+router.get(
+  "/updates",
+  asyncHandler(async (req, res) => {
+    const [allUsers, updates] = await Promise.all([
+      getAllUsers(),
+      getAllUpdates(),
+    ]);
 
-  // הוסף שם לקוחה לכל עדכון
-  const enriched = updates.map((u) => {
-    const client = allUsers.find((user) => user.id === u.userId);
-    return { ...u, clientName: client ? client.name : "לא ידוע" };
-  });
+    // הוסף שם לקוחה לכל עדכון
+    const enriched = updates.map((u) => {
+      const client = allUsers.find((user) => user.id === u.userId);
+      return { ...u, clientName: client ? client.name : "לא ידוע" };
+    });
 
-  res.json({ success: true, updates: enriched });
-}));
+    res.json({ success: true, updates: enriched });
+  }),
+);
 
 // ─── GET /api/coach/meetings - בקשות פגישות ──────────────────────────────────
-router.get("/meetings", asyncHandler(async (req, res) => {
-  const [allUsers, meetings] = await Promise.all([
-    getAllUsers(),
-    getAllMeetings(),
-  ]);
+router.get(
+  "/meetings",
+  asyncHandler(async (req, res) => {
+    const [allUsers, meetings] = await Promise.all([
+      getAllUsers(),
+      getAllMeetings(),
+    ]);
 
-  const enriched = meetings.map((m) => {
-    const client = allUsers.find((u) => u.id === m.userId);
-    return { ...m, clientName: client ? client.name : "לא ידוע" };
-  });
+    const enriched = meetings.map((m) => {
+      const client = allUsers.find((u) => u.id === m.userId);
+      return { ...m, clientName: client ? client.name : "לא ידוע" };
+    });
 
-  res.json({ success: true, meetings: enriched });
-}));
+    res.json({ success: true, meetings: enriched });
+  }),
+);
 
 // ─── PUT /api/coach/meetings/:id - אשר/דחה פגישה ────────────────────────────
-router.put("/meetings/:id", asyncHandler(async (req, res) => {
-  const { status } = req.body;
-  const validStatuses = ["ממתין לאישור", "אושר", "נדחה", "בוטל"];
+router.put(
+  "/meetings/:id",
+  asyncHandler(async (req, res) => {
+    const { status } = req.body;
+    const validStatuses = ["ממתין לאישור", "אושר", "נדחה", "בוטל"];
 
-  if (!validStatuses.includes(status)) {
-    return res.status(400).json({ error: "סטטוס לא תקין" });
-  }
+    if (!validStatuses.includes(status)) {
+      return res.status(400).json({ error: "סטטוס לא תקין" });
+    }
 
-  const meeting = await updateMeetingStatus(req.params.id, status);
-  if (!meeting) {
-    return res.status(404).json({ error: "פגישה לא נמצאה" });
-  }
+    const meeting = await updateMeetingStatus(req.params.id, status);
+    if (!meeting) {
+      return res.status(404).json({ error: "פגישה לא נמצאה" });
+    }
 
-  res.json({ success: true, message: `סטטוס פגישה עודכן: ${status}`, meeting });
-}));
+    res.json({
+      success: true,
+      message: `סטטוס פגישה עודכן: ${status}`,
+      meeting,
+    });
+  }),
+);
 
 // ─── GET /api/coach/messages - כל ההודעות ────────────────────────────────────
-router.get("/messages", asyncHandler(async (req, res) => {
-  const [allUsers, messages] = await Promise.all([
-    getAllUsers(),
-    getAllMessages(),
-  ]);
+router.get(
+  "/messages",
+  asyncHandler(async (req, res) => {
+    const [allUsers, messages] = await Promise.all([
+      getAllUsers(),
+      getAllMessages(),
+    ]);
 
-  const enriched = messages.map((m) => {
-    const client = allUsers.find((u) => u.id === m.userId);
-    return { ...m, clientName: client ? client.name : "לא ידוע" };
-  });
+    const enriched = messages.map((m) => {
+      const client = allUsers.find((u) => u.id === m.userId);
+      return { ...m, clientName: client ? client.name : "לא ידוע" };
+    });
 
-  res.json({ success: true, messages: enriched });
-}));
+    res.json({ success: true, messages: enriched });
+  }),
+);
 
 // ─── POST /api/coach/messages/:userId - שלח הודעה ללקוחה ─────────────────────
 router.post("/messages/:userId", async (req, res) => {
@@ -633,7 +675,12 @@ router.post("/messages/:userId", async (req, res) => {
       return res.status(404).json({ error: "לקוחה לא נמצאה" });
     }
 
-    const message = await addMessage("coach-shalhevet", userId, text.trim(), "coach");
+    const message = await addMessage(
+      "coach-shalhevet",
+      userId,
+      text.trim(),
+      "coach",
+    );
 
     res.json({
       success: true,
@@ -646,31 +693,34 @@ router.post("/messages/:userId", async (req, res) => {
 });
 
 // ─── GET /api/coach/stats - סטטיסטיקות ──────────────────────────────────────
-router.get("/stats", asyncHandler(async (req, res) => {
-  const [allUsers, updates, meetings, messages] = await Promise.all([
-    getAllUsers(),
-    getAllUpdates(),
-    getAllMeetings(),
-    getAllMessages(),
-  ]);
+router.get(
+  "/stats",
+  asyncHandler(async (req, res) => {
+    const [allUsers, updates, meetings, messages] = await Promise.all([
+      getAllUsers(),
+      getAllUpdates(),
+      getAllMeetings(),
+      getAllMessages(),
+    ]);
 
-  const clients = allUsers.filter((u) => u.role === "client");
-  const activeClients = clients.filter((u) => u.isActive);
-  const pendingMeetings = meetings.filter((m) => m.status === "ממתין לאישור");
-  const unreadUpdates = updates.filter((u) => !u.readByCoach);
+    const clients = allUsers.filter((u) => u.role === "client");
+    const activeClients = clients.filter((u) => u.isActive);
+    const pendingMeetings = meetings.filter((m) => m.status === "ממתין לאישור");
+    const unreadUpdates = updates.filter((u) => !u.readByCoach);
 
-  res.json({
-    success: true,
-    stats: {
-      totalClients: clients.length,
-      activeClients: activeClients.length,
-      pendingMeetings: pendingMeetings.length,
-      unreadUpdates: unreadUpdates.length,
-      totalUpdates: updates.length,
-      totalMeetings: meetings.length,
-      totalMessages: messages.length,
-    },
-  });
-}));
+    res.json({
+      success: true,
+      stats: {
+        totalClients: clients.length,
+        activeClients: activeClients.length,
+        pendingMeetings: pendingMeetings.length,
+        unreadUpdates: unreadUpdates.length,
+        totalUpdates: updates.length,
+        totalMeetings: meetings.length,
+        totalMessages: messages.length,
+      },
+    });
+  }),
+);
 
 module.exports = router;

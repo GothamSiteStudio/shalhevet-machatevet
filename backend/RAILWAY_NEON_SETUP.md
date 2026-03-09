@@ -49,7 +49,7 @@
 2. הגדירי `Root Directory` לערך:
 
 ```text
-/backend
+backend
 ```
 
 אם Railway מבקש גם נתיב לקובץ config, השתמשי ב:

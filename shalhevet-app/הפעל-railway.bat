@@ -21,9 +21,10 @@ if not exist ".env" (
 
 echo מפעיל Expo במצב Tunnel עם הגדרות Railway...
 echo הטלפונים יוכלו להתחבר דרך Expo Go.
+echo מתבצע גם ניקוי cache כדי לא להיתקע עם הגדרות חיבור ישנות.
 echo.
 
-call npx expo start --tunnel
+call npx expo start --tunnel -c
 
 echo.
 echo *** האפליקציה נסגרה ***

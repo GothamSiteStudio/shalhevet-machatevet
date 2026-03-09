@@ -179,7 +179,8 @@ function mapMessage(row) {
 }
 
 function mapLog(row) {
-  const payload = row.payload && typeof row.payload === "object" ? row.payload : {};
+  const payload =
+    row.payload && typeof row.payload === "object" ? row.payload : {};
 
   return {
     id: row.id,
@@ -240,7 +241,9 @@ async function readDB() {
     workoutPlansResult,
   ] = await Promise.all([
     query("SELECT * FROM users ORDER BY created_at DESC"),
-    query("SELECT * FROM weight_history ORDER BY entry_date ASC, created_at ASC"),
+    query(
+      "SELECT * FROM weight_history ORDER BY entry_date ASC, created_at ASC",
+    ),
     query("SELECT * FROM workout_logs ORDER BY created_at DESC"),
     query("SELECT * FROM nutrition_logs ORDER BY created_at DESC"),
     query("SELECT * FROM updates ORDER BY created_at DESC"),
@@ -295,7 +298,9 @@ async function getUserById(id) {
 }
 
 async function getUserByEmail(email) {
-  const normalizedEmail = String(email || "").toLowerCase().trim();
+  const normalizedEmail = String(email || "")
+    .toLowerCase()
+    .trim();
   if (!normalizedEmail) return null;
 
   const result = await query("SELECT * FROM users WHERE email = $1 LIMIT 1", [
@@ -325,7 +330,9 @@ async function createUser(userData) {
     [
       userData.id,
       userData.name,
-      String(userData.email || "").toLowerCase().trim(),
+      String(userData.email || "")
+        .toLowerCase()
+        .trim(),
       userData.phone || "",
       userData.password,
       userData.role,
@@ -352,7 +359,10 @@ async function updateUser(id, updates) {
     name: { column: "name" },
     email: {
       column: "email",
-      transform: (value) => String(value || "").toLowerCase().trim(),
+      transform: (value) =>
+        String(value || "")
+          .toLowerCase()
+          .trim(),
     },
     phone: { column: "phone" },
     password: { column: "password" },
@@ -379,7 +389,9 @@ async function updateUser(id, updates) {
     if (rawValue === undefined || !fieldMap[key]) return;
 
     const descriptor = fieldMap[key];
-    const value = descriptor.transform ? descriptor.transform(rawValue) : rawValue;
+    const value = descriptor.transform
+      ? descriptor.transform(rawValue)
+      : rawValue;
     values.push(value);
     setClauses.push(`${descriptor.column} = $${values.length}`);
   });
@@ -669,13 +681,7 @@ async function addMeeting(userId, date, notes) {
       VALUES ($1, $2, $3, $4, $5, NOW())
       RETURNING *
     `,
-    [
-      createRecordId("meeting"),
-      userId,
-      date,
-      notes || "",
-      "ממתין לאישור",
-    ],
+    [createRecordId("meeting"), userId, date, notes || "", "ממתין לאישור"],
   );
 
   return mapMeeting(result.rows[0]);
