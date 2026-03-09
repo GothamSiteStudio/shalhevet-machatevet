@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  Image,
   Modal,
   ScrollView,
   StyleSheet,
@@ -13,11 +14,18 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../theme/colors';
 import { coachAPI } from '../services/api';
+import { RECIPE_CATALOG, createNutritionMealFromRecipe } from '../data/recipeCatalog';
 
 const TABS = [
   { id: 'goals', label: 'יעדים', icon: 'flag-outline' },
   { id: 'nutrition', label: 'תפריט', icon: 'restaurant-outline' },
   { id: 'workout', label: 'אימונים', icon: 'barbell-outline' },
+];
+
+const RECIPE_CATEGORY_ALL = 'הכל';
+const RECIPE_CATEGORIES = [
+  RECIPE_CATEGORY_ALL,
+  ...Array.from(new Set(RECIPE_CATALOG.map(recipe => recipe.category))),
 ];
 
 function makeId(prefix) {
@@ -46,6 +54,7 @@ function createEmptyMealItem() {
     id: makeId('meal-item'),
     name: '',
     amount: '',
+    imageUrl: '',
     calories: '',
     protein: '',
     carbs: '',
@@ -77,6 +86,10 @@ function createEmptyNutritionForm() {
     },
     meals: [],
   };
+}
+
+function isValidHttpUrl(value) {
+  return typeof value === 'string' && /^https?:\/\/\S+$/i.test(value.trim());
 }
 
 function createEmptyExercise() {
@@ -160,6 +173,7 @@ function mapNutritionToForm(plan) {
                 id: item.id || makeId('meal-item'),
                 name: item.name || '',
                 amount: item.amount || '',
+                imageUrl: item.imageUrl || '',
                 calories: toInputValue(item.calories),
                 protein: toInputValue(item.protein),
                 carbs: toInputValue(item.carbs),
@@ -243,6 +257,7 @@ function serializeNutrition(form) {
         id: item.id,
         name: item.name.trim(),
         amount: item.amount.trim(),
+        imageUrl: item.imageUrl.trim(),
         calories: item.calories,
         protein: item.protein,
         carbs: item.carbs,
@@ -387,13 +402,54 @@ export default function CoachClientPlansModal({ visible, clientId, onClose, onSa
   const [goalsForm, setGoalsForm] = useState(createEmptyGoalsForm());
   const [nutritionForm, setNutritionForm] = useState(createEmptyNutritionForm());
   const [workoutForm, setWorkoutForm] = useState(createEmptyWorkoutForm());
+  const [recipeQuery, setRecipeQuery] = useState('');
+  const [activeRecipeCategory, setActiveRecipeCategory] = useState(RECIPE_CATEGORY_ALL);
 
   const resetForms = useCallback(() => {
     setClient(null);
     setGoalsForm(createEmptyGoalsForm());
     setNutritionForm(createEmptyNutritionForm());
     setWorkoutForm(createEmptyWorkoutForm());
+    setRecipeQuery('');
+    setActiveRecipeCategory(RECIPE_CATEGORY_ALL);
   }, []);
+
+  const queryMatchedRecipes = RECIPE_CATALOG.filter(recipe => {
+    const query = recipeQuery.trim().toLowerCase();
+    if (!query) return true;
+
+    const haystack = [
+      recipe.title,
+      recipe.category,
+      recipe.summary,
+      recipe.portion,
+      ...recipe.ingredients,
+    ]
+      .join(' ')
+      .toLowerCase();
+
+    return haystack.includes(query);
+  });
+
+  const filteredRecipes = queryMatchedRecipes.filter(
+    recipe =>
+      activeRecipeCategory === RECIPE_CATEGORY_ALL || recipe.category === activeRecipeCategory
+  );
+
+  const groupedRecipes = RECIPE_CATEGORIES.filter(category => category !== RECIPE_CATEGORY_ALL)
+    .map(category => ({
+      category,
+      recipes: filteredRecipes.filter(recipe => recipe.category === category),
+    }))
+    .filter(group => group.recipes.length > 0);
+
+  const recipeCategoryCounts = RECIPE_CATEGORIES.reduce((accumulator, category) => {
+    accumulator[category] =
+      category === RECIPE_CATEGORY_ALL
+        ? queryMatchedRecipes.length
+        : queryMatchedRecipes.filter(recipe => recipe.category === category).length;
+    return accumulator;
+  }, {});
 
   const loadClient = useCallback(async () => {
     if (!clientId) return;
@@ -495,6 +551,21 @@ export default function CoachClientPlansModal({ visible, clientId, onClose, onSa
             }
       ),
     }));
+  };
+
+  const addRecipeToNutritionPlan = recipe => {
+    const meal = createNutritionMealFromRecipe(recipe, makeId);
+
+    setNutritionForm(current => ({
+      ...current,
+      meals: [...current.meals, meal],
+    }));
+
+    Alert.alert('נוסף לתפריט', `${recipe.title} נוסף כמתכון חדש בתפריט.`);
+  };
+
+  const showRecipeImagePrompt = recipe => {
+    Alert.alert(`פרומפט תמונה: ${recipe.title}`, recipe.imagePrompt);
   };
 
   const updateWorkoutField = (field, value) => {
@@ -782,6 +853,122 @@ export default function CoachClientPlansModal({ visible, clientId, onClose, onSa
       </SectionCard>
 
       <SectionCard
+        title="ספריית מתכונים מוכנים"
+        subtitle="מתכונים שחולצו מהקובץ שהעלית, עם קלוריות משוערות לכל מנה"
+        icon="book-outline"
+      >
+        <Field
+          label="חיפוש מתכון"
+          value={recipeQuery}
+          onChangeText={setRecipeQuery}
+          placeholder="חפשי לפי שם, קטגוריה או מרכיב"
+        />
+
+        <Text style={styles.recipeLibraryHint}>
+          הקלוריות הן הערכה מקצועית לפי ספר המתכונים שהועלה. אפשר לעדכן ידנית אחרי ההוספה אם צריך.
+        </Text>
+
+        <View style={styles.summaryChipsRow}>
+          <SummaryChip label="מתכונים" value={filteredRecipes.length} color={COLORS.primary} />
+          <SummaryChip label="קטגוריה" value={activeRecipeCategory} color={COLORS.info} />
+        </View>
+
+        <View style={styles.recipeCategoryFilters}>
+          {RECIPE_CATEGORIES.map(category => {
+            const isActive = category === activeRecipeCategory;
+
+            return (
+              <TouchableOpacity
+                key={category}
+                onPress={() => setActiveRecipeCategory(category)}
+                style={[styles.recipeCategoryChip, isActive && styles.recipeCategoryChipActive]}
+              >
+                <Text
+                  style={[
+                    styles.recipeCategoryChipText,
+                    isActive && styles.recipeCategoryChipTextActive,
+                  ]}
+                >
+                  {category}
+                </Text>
+                <View
+                  style={[
+                    styles.recipeCategoryCount,
+                    isActive && styles.recipeCategoryCountActive,
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.recipeCategoryCountText,
+                      isActive && styles.recipeCategoryCountTextActive,
+                    ]}
+                  >
+                    {recipeCategoryCounts[category] || 0}
+                  </Text>
+                </View>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+
+        <View style={styles.recipeList}>
+          {filteredRecipes.length === 0 ? (
+            <Text style={styles.emptyStateText}>לא נמצאו מתכונים שמתאימים לחיפוש.</Text>
+          ) : (
+            groupedRecipes.map(group => (
+              <View key={group.category} style={styles.recipeGroup}>
+                <View style={styles.recipeGroupHeader}>
+                  <View style={styles.recipeGroupCountPill}>
+                    <Text style={styles.recipeGroupCountText}>{group.recipes.length}</Text>
+                  </View>
+                  <Text style={styles.recipeGroupTitle}>{group.category}</Text>
+                </View>
+
+                {group.recipes.map(recipe => (
+                  <View key={recipe.id} style={styles.recipeCard}>
+                    <View style={styles.recipeCardHeader}>
+                      <View style={styles.recipeCaloriesPill}>
+                        <Text style={styles.recipeCaloriesPillText}>{recipe.caloriesPerServing} קל׳</Text>
+                      </View>
+                      <View style={styles.recipeCardTitleWrap}>
+                        <Text style={styles.recipeCardTitle}>{recipe.title}</Text>
+                        <Text style={styles.recipeCardMeta}>
+                          {recipe.category} · {recipe.portion} · {recipe.servings} מנות
+                        </Text>
+                      </View>
+                    </View>
+
+                    <Text style={styles.recipeCardSummary}>{recipe.summary}</Text>
+                    <Text style={styles.recipeCardIngredients}>
+                      {recipe.ingredients.slice(0, 4).join(' · ')}
+                    </Text>
+
+                    <View style={styles.recipeCardActions}>
+                      <TouchableOpacity
+                        onPress={() => showRecipeImagePrompt(recipe)}
+                        style={styles.recipeSecondaryBtn}
+                      >
+                        <Ionicons name="image-outline" size={16} color={COLORS.info} />
+                        <Text style={styles.recipeSecondaryBtnText}>פרומפט תמונה</Text>
+                      </TouchableOpacity>
+
+                      <TouchableOpacity
+                        onPress={() => addRecipeToNutritionPlan(recipe)}
+                        style={styles.recipePrimaryBtn}
+                      >
+                        <Ionicons name="add-circle-outline" size={16} color={COLORS.white} />
+                        <Text style={styles.recipePrimaryBtnText}>הוסיפי לתפריט</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                ))}
+              </View>
+            ))
+          )}
+        </View>
+      </SectionCard>
+
+      <SectionCard
         title="ארוחות"
         subtitle="הוספה ועריכה של ארוחות והפריטים שבתוכן"
         actionLabel="הוסיפי ארוחה"
@@ -859,6 +1046,25 @@ export default function CoachClientPlansModal({ visible, clientId, onClose, onSa
                       onChangeText={value => updateMealItemField(meal.id, item.id, 'amount', value)}
                       placeholder="1 גביע / 150 גרם"
                     />
+
+                    <Field
+                      label="קישור לתמונה"
+                      value={item.imageUrl}
+                      onChangeText={value =>
+                        updateMealItemField(meal.id, item.id, 'imageUrl', value)
+                      }
+                      placeholder="https://example.com/recipe.jpg"
+                    />
+
+                    {isValidHttpUrl(item.imageUrl) ? (
+                      <View style={styles.itemImagePreviewWrap}>
+                        <Image
+                          source={{ uri: item.imageUrl }}
+                          style={styles.itemImagePreview}
+                          resizeMode="cover"
+                        />
+                      </View>
+                    ) : null}
 
                     <View style={styles.twoColumns}>
                       <View style={styles.flexField}>
@@ -1374,6 +1580,19 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '700',
   },
+  itemImagePreviewWrap: {
+    backgroundColor: COLORS.card,
+    borderColor: COLORS.border,
+    borderRadius: 12,
+    borderWidth: 1,
+    marginBottom: 12,
+    overflow: 'hidden',
+  },
+  itemImagePreview: {
+    backgroundColor: COLORS.card,
+    height: 160,
+    width: '100%',
+  },
   innerSectionHeader: {
     alignItems: 'center',
     flexDirection: 'row',
@@ -1473,6 +1692,190 @@ const styles = StyleSheet.create({
     color: COLORS.white,
     fontSize: 15,
     fontWeight: 'bold',
+  },
+  recipeCard: {
+    backgroundColor: COLORS.card,
+    borderColor: COLORS.border,
+    borderRadius: 16,
+    borderWidth: 1,
+    padding: 12,
+  },
+  recipeCardActions: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 12,
+  },
+  recipeCardHeader: {
+    alignItems: 'flex-start',
+    flexDirection: 'row',
+    gap: 10,
+    justifyContent: 'space-between',
+  },
+  recipeCardIngredients: {
+    color: COLORS.textMuted,
+    fontSize: 11,
+    lineHeight: 18,
+    marginTop: 8,
+    textAlign: 'right',
+  },
+  recipeCardMeta: {
+    color: COLORS.textSecondary,
+    fontSize: 11,
+    marginTop: 3,
+    textAlign: 'right',
+  },
+  recipeCardSummary: {
+    color: COLORS.white,
+    fontSize: 13,
+    lineHeight: 20,
+    marginTop: 10,
+    textAlign: 'right',
+  },
+  recipeCardTitle: {
+    color: COLORS.white,
+    fontSize: 15,
+    fontWeight: '700',
+    textAlign: 'right',
+  },
+  recipeCardTitleWrap: {
+    alignItems: 'flex-end',
+    flex: 1,
+  },
+  recipeCaloriesPill: {
+    backgroundColor: `${COLORS.primary}1F`,
+    borderColor: `${COLORS.primary}55`,
+    borderRadius: 999,
+    borderWidth: 1,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  recipeCaloriesPillText: {
+    color: COLORS.primary,
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  recipeCategoryChip: {
+    alignItems: 'center',
+    backgroundColor: COLORS.card,
+    borderColor: COLORS.border,
+    borderRadius: 999,
+    borderWidth: 1,
+    flexDirection: 'row-reverse',
+    gap: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  recipeCategoryChipActive: {
+    backgroundColor: `${COLORS.primary}18`,
+    borderColor: `${COLORS.primary}55`,
+  },
+  recipeCategoryChipText: {
+    color: COLORS.textSecondary,
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  recipeCategoryChipTextActive: {
+    color: COLORS.primary,
+  },
+  recipeCategoryCount: {
+    alignItems: 'center',
+    backgroundColor: COLORS.inputBg,
+    borderRadius: 999,
+    justifyContent: 'center',
+    minWidth: 24,
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+  },
+  recipeCategoryCountActive: {
+    backgroundColor: `${COLORS.primary}26`,
+  },
+  recipeCategoryCountText: {
+    color: COLORS.textMuted,
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  recipeCategoryCountTextActive: {
+    color: COLORS.primary,
+  },
+  recipeCategoryFilters: {
+    flexDirection: 'row-reverse',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: 12,
+  },
+  recipeGroup: {
+    gap: 10,
+  },
+  recipeGroupCountPill: {
+    alignItems: 'center',
+    backgroundColor: `${COLORS.info}22`,
+    borderRadius: 999,
+    justifyContent: 'center',
+    minWidth: 28,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  recipeGroupCountText: {
+    color: COLORS.info,
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  recipeGroupHeader: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 8,
+    justifyContent: 'flex-end',
+    marginTop: 4,
+  },
+  recipeGroupTitle: {
+    color: COLORS.white,
+    fontSize: 15,
+    fontWeight: '700',
+    textAlign: 'right',
+  },
+  recipeLibraryHint: {
+    color: COLORS.textSecondary,
+    fontSize: 12,
+    lineHeight: 18,
+    marginBottom: 10,
+    textAlign: 'right',
+  },
+  recipeList: {
+    gap: 10,
+  },
+  recipePrimaryBtn: {
+    alignItems: 'center',
+    backgroundColor: COLORS.primary,
+    borderRadius: 12,
+    flex: 1,
+    flexDirection: 'row',
+    gap: 6,
+    justifyContent: 'center',
+    paddingHorizontal: 10,
+    paddingVertical: 10,
+  },
+  recipePrimaryBtnText: {
+    color: COLORS.white,
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  recipeSecondaryBtn: {
+    alignItems: 'center',
+    backgroundColor: COLORS.inputBg,
+    borderColor: COLORS.border,
+    borderRadius: 12,
+    borderWidth: 1,
+    flex: 1,
+    flexDirection: 'row',
+    gap: 6,
+    justifyContent: 'center',
+    paddingHorizontal: 10,
+    paddingVertical: 10,
+  },
+  recipeSecondaryBtnText: {
+    color: COLORS.info,
+    fontSize: 12,
+    fontWeight: '700',
   },
   removeBtn: {
     alignItems: 'center',

@@ -85,6 +85,14 @@ const useStore = create((set, get) => ({
   waterIntake: 0, // in liters
   waterGoal: 2.5,
   setWaterIntake: (liters) => set({ waterIntake: Math.max(0, Math.min(liters, get().waterGoal)) }),
+  setWaterGoal: (liters) =>
+    set((state) => {
+      const nextGoal = Math.max(0, Number(liters) || 0);
+      return {
+        waterGoal: nextGoal,
+        waterIntake: Math.min(state.waterIntake, nextGoal),
+      };
+    }),
 
   getMealsByDate: (dateKey) => {
     const days = get().nutritionDays;

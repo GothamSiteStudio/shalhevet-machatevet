@@ -80,6 +80,25 @@ function parseOptionalText(value) {
   return String(value).trim();
 }
 
+function parseOptionalHttpUrl(value, fieldName) {
+  if (value === undefined) return undefined;
+  if (value === null || value === "") return "";
+
+  const url = String(value).trim();
+  if (!url) return "";
+
+  try {
+    const parsed = new URL(url);
+    if (!["http:", "https:"].includes(parsed.protocol)) {
+      throw new Error("invalid protocol");
+    }
+
+    return parsed.toString();
+  } catch {
+    throw createBadRequest(`השדה ${fieldName} חייב להיות קישור תקין`);
+  }
+}
+
 function ensureArray(value, fieldName) {
   if (!Array.isArray(value)) {
     throw createBadRequest(`השדה ${fieldName} חייב להיות מערך`);
@@ -134,6 +153,11 @@ function buildMealItems(items, mealIndex) {
         id: item?.id || `meal-item-${mealIndex + 1}-${itemIndex + 1}`,
         name,
         amount: parseOptionalText(item?.amount) || "",
+        imageUrl:
+          parseOptionalHttpUrl(
+            item?.imageUrl,
+            `meals[${mealIndex}].items[${itemIndex}].imageUrl`,
+          ) || "",
         calories:
           parseOptionalNumber(
             item?.calories,

@@ -1,33 +1,104 @@
-import React, { useState } from 'react';
+import React, { useCallback, useState } from 'react';
 import {
-  View, Text, TouchableOpacity, StyleSheet,
-  ScrollView, Modal, TextInput, Alert, Dimensions,
+  ActivityIndicator,
+  Alert,
+  Image,
+  Modal,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { COLORS } from '../theme/colors';
 import useStore from '../store/useStore';
+import { usersAPI } from '../services/api';
 
-const { width } = Dimensions.get('window');
-
-const DAYS_HE = ['ראשון', 'שני', 'שלישי', 'רביעי', 'חמישי', 'שישי', 'שבת'];
-const MONTHS_HE = ['ינואר','פברואר','מרץ','אפריל','מאי','יוני','יולי','אוגוסט','ספטמבר','אוקטובר','נובמבר','דצמבר'];
-
-function formatDate(date) {
-  return `${date.getDate()} ${MONTHS_HE[date.getMonth()]}`;
+function toNumber(value) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : 0;
 }
 
-function getDateKey(date) {
-  return date.toISOString().split('T')[0];
+function isRemoteImageUrl(value) {
+  return typeof value === 'string' && /^https?:\/\/\S+$/i.test(value.trim());
 }
 
-function MealCard({ meal, mealKey, onAddItem }) {
+function calculateCaloriesFromMacros(protein, carbs, fat) {
+  return Math.round(protein * 4 + carbs * 4 + fat * 9);
+}
+
+function normalizeMealItem(item, index) {
+  const protein = toNumber(item?.protein);
+  const carbs = toNumber(item?.carbs);
+  const fat = toNumber(item?.fat);
+  const calories =
+    item?.calories === undefined || item?.calories === null || item?.calories === ''
+      ? calculateCaloriesFromMacros(protein, carbs, fat)
+      : toNumber(item.calories);
+
+  return {
+    id: item?.id || `meal-item-${index + 1}`,
+    name: item?.name || 'פריט תזונתי',
+    portion: item?.amount || item?.portion || '',
+    notes: item?.notes || '',
+    imageUrl: typeof item?.imageUrl === 'string' ? item.imageUrl.trim() : '',
+    calories,
+    protein,
+    carbs,
+    fat,
+  };
+}
+
+function normalizeMeal(meal, index) {
+  return {
+    id: meal?.id || `meal-${index + 1}`,
+    name: meal?.name || `ארוחה ${index + 1}`,
+    time: meal?.time || '',
+    notes: meal?.notes || '',
+    items: Array.isArray(meal?.items) ? meal.items.map(normalizeMealItem) : [],
+  };
+}
+
+function normalizeNutritionPlan(plan) {
+  if (!plan) return null;
+
+  return {
+    title: plan.title || 'תפריט אישי',
+    notes: plan.notes || '',
+    dailyTargets: {
+      calories: toNumber(plan.dailyTargets?.calories),
+      protein: toNumber(plan.dailyTargets?.protein),
+      carbs: toNumber(plan.dailyTargets?.carbs),
+      fat: toNumber(plan.dailyTargets?.fat),
+      waterLiters: toNumber(plan.dailyTargets?.waterLiters),
+    },
+    meals: Array.isArray(plan.meals) ? plan.meals.map(normalizeMeal) : [],
+  };
+}
+
+function calculatePlanTotals(meals) {
+  const allItems = meals.flatMap(meal => meal.items || []);
+
+  return {
+    calories: allItems.reduce((sum, item) => sum + toNumber(item.calories), 0),
+    protein: allItems.reduce((sum, item) => sum + toNumber(item.protein), 0),
+    carbs: allItems.reduce((sum, item) => sum + toNumber(item.carbs), 0),
+    fat: allItems.reduce((sum, item) => sum + toNumber(item.fat), 0),
+  };
+}
+
+function MealCard({ meal, mealKey, dailyCalorieTarget, onAddItem }) {
   const [expanded, setExpanded] = useState(false);
-  const usedProtein = meal.items.reduce((s, i) => s + (i.protein || 0), 0);
-  const usedCarbs = meal.items.reduce((s, i) => s + (i.carbs || 0), 0);
-  const usedFat = meal.items.reduce((s, i) => s + (i.fat || 0), 0);
-  const usedTotal = usedProtein + usedCarbs + usedFat;
-  const pct = Math.min((usedTotal / meal.maxPoints) * 100, 100);
+  const mealTotals = calculatePlanTotals([meal]);
+  const mealImage = meal.items.find(item => isRemoteImageUrl(item.imageUrl))?.imageUrl;
+  const pct =
+    dailyCalorieTarget > 0
+      ? Math.min((mealTotals.calories / dailyCalorieTarget) * 100, 100)
+      : 0;
 
   return (
     <View style={styles.mealCard}>
@@ -37,43 +108,72 @@ function MealCard({ meal, mealKey, onAddItem }) {
           size={18} color={COLORS.textSecondary}
         />
         <View style={styles.mealHeaderRight}>
-          <Text style={styles.mealName}>{meal.name}</Text>
-          <Text style={styles.mealPoints}>{meal.maxPoints} נק׳</Text>
-          <MaterialCommunityIcons name="star-four-points" size={14} color={COLORS.primary} />
+          <View style={styles.mealHeaderTextWrap}>
+            <Text style={styles.mealName}>{meal.name}</Text>
+            <Text style={styles.mealHeaderMeta}>
+              {meal.time ? `${meal.time} · ` : ''}
+              {Math.round(mealTotals.calories)} קל׳
+            </Text>
+          </View>
+          {mealImage ? (
+            <Image source={{ uri: mealImage }} style={styles.mealHeaderImage} resizeMode="cover" />
+          ) : (
+            <View style={styles.mealHeaderImageFallback}>
+              <Ionicons name="restaurant-outline" size={18} color={COLORS.textMuted} />
+            </View>
+          )}
         </View>
       </TouchableOpacity>
 
-      <View style={styles.mealProgressBg}>
-        <View style={[styles.mealProgressFill, { width: `${pct}%` }]} />
-      </View>
+      {dailyCalorieTarget > 0 ? (
+        <View style={styles.mealProgressBg}>
+          <View style={[styles.mealProgressFill, { width: `${pct}%` }]} />
+        </View>
+      ) : null}
       <Text style={styles.mealProgressLabel}>
-        {usedTotal.toFixed(1)} / {meal.maxPoints} נק׳ בשימוש
+        {dailyCalorieTarget > 0
+          ? `${Math.round(mealTotals.calories)} / ${Math.round(dailyCalorieTarget)} קל׳ מהיעד היומי`
+          : meal.notes || `${meal.items.length} פריטים בארוחה`}
       </Text>
 
       {expanded && (
         <View style={styles.mealBody}>
-          {meal.items.map((item, idx) => (
-            <View key={idx} style={styles.mealItem}>
+          {meal.notes ? <Text style={styles.mealNote}>{meal.notes}</Text> : null}
+          {meal.items.map((item) => (
+            <View key={item.id} style={styles.mealItem}>
+              {isRemoteImageUrl(item.imageUrl) ? (
+                <Image source={{ uri: item.imageUrl }} style={styles.mealItemImage} resizeMode="cover" />
+              ) : (
+                <View style={styles.mealItemImageFallback}>
+                  <Ionicons name="image-outline" size={18} color={COLORS.textMuted} />
+                </View>
+              )}
               <View style={styles.mealItemRight}>
                 <Text style={styles.mealItemName}>{item.name}</Text>
-                <Text style={styles.mealItemPortion}>{item.portion}</Text>
+                {item.portion ? <Text style={styles.mealItemPortion}>{item.portion}</Text> : null}
+                {item.notes ? <Text style={styles.mealItemNotes}>{item.notes}</Text> : null}
               </View>
-              <View style={styles.mealItemMacros}>
-                <View style={[styles.macroBadge, { backgroundColor: '#1565C044' }]}>
-                  <Text style={[styles.macroText, { color: '#42A5F5' }]}>
-                    נ {item.protein.toFixed(1)}
-                  </Text>
-                </View>
-                <View style={[styles.macroBadge, { backgroundColor: '#E65100' + '44' }]}>
-                  <Text style={[styles.macroText, { color: '#FFA726' }]}>
-                    פ {item.carbs.toFixed(1)}
-                  </Text>
-                </View>
-                <View style={[styles.macroBadge, { backgroundColor: '#D32F2F44' }]}>
-                  <Text style={[styles.macroText, { color: '#EF5350' }]}>
-                    ש {item.fat.toFixed(1)}
-                  </Text>
-                </View>
+              <View style={styles.mealItemMeta}>
+                <Text style={styles.mealItemCalories}>{Math.round(item.calories)} קל׳</Text>
+                {toNumber(item.protein) > 0 || toNumber(item.carbs) > 0 || toNumber(item.fat) > 0 ? (
+                  <View style={styles.mealItemMacros}>
+                    <View style={[styles.macroBadge, { backgroundColor: '#1565C044' }]}>
+                      <Text style={[styles.macroText, { color: '#42A5F5' }]}>
+                        נ {item.protein.toFixed(1)}
+                      </Text>
+                    </View>
+                    <View style={[styles.macroBadge, { backgroundColor: '#E6510044' }]}>
+                      <Text style={[styles.macroText, { color: '#FFA726' }]}>
+                        פ {item.carbs.toFixed(1)}
+                      </Text>
+                    </View>
+                    <View style={[styles.macroBadge, { backgroundColor: '#D32F2F44' }]}>
+                      <Text style={[styles.macroText, { color: '#EF5350' }]}>
+                        ש {item.fat.toFixed(1)}
+                      </Text>
+                    </View>
+                  </View>
+                ) : null}
               </View>
             </View>
           ))}
@@ -121,31 +221,43 @@ function AIModal({ visible, onClose, onAction }) {
 }
 
 export default function NutritionScreen() {
-  const { nutritionBudget, waterIntake, waterGoal, setWaterIntake, getMealsByDate } = useStore();
-  const [selectedDate, setSelectedDate] = useState(new Date());
+  const { waterIntake, waterGoal, setWaterGoal, setWaterIntake } = useStore();
+  const [nutritionPlan, setNutritionPlan] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [loadError, setLoadError] = useState('');
   const [showAI, setShowAI] = useState(false);
-  const [draggingWater, setDraggingWater] = useState(false);
 
-  const dateKey = getDateKey(selectedDate);
-  const meals = getMealsByDate(dateKey);
+  const loadNutritionPlan = useCallback(async (isRefresh = false) => {
+    if (isRefresh) {
+      setRefreshing(true);
+    } else {
+      setLoading(true);
+    }
 
-  const allItems = Object.values(meals).flatMap((m) => m.items);
-  const usedProtein = allItems.reduce((s, i) => s + (i.protein || 0), 0);
-  const usedCarbs = allItems.reduce((s, i) => s + (i.carbs || 0), 0);
-  const usedFat = allItems.reduce((s, i) => s + (i.fat || 0), 0);
-  const usedTotal = usedProtein + usedCarbs + usedFat;
-  const remaining = Math.max(nutritionBudget.total - usedTotal, 0);
+    try {
+      const result = await usersAPI.getNutritionPlan();
+      const plan = normalizeNutritionPlan(result.nutritionPlan);
+      setNutritionPlan(plan);
+      setLoadError('');
 
-  const prevDay = () => {
-    const d = new Date(selectedDate);
-    d.setDate(d.getDate() - 1);
-    setSelectedDate(d);
-  };
-  const nextDay = () => {
-    const d = new Date(selectedDate);
-    d.setDate(d.getDate() + 1);
-    setSelectedDate(d);
-  };
+      if (plan?.dailyTargets?.waterLiters > 0) {
+        setWaterGoal(plan.dailyTargets.waterLiters);
+      }
+    } catch (err) {
+      setNutritionPlan(null);
+      setLoadError(err.message || 'לא ניתן לטעון את התפריט האישי כרגע');
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, [setWaterGoal]);
+
+  useFocusEffect(
+    useCallback(() => {
+      loadNutritionPlan();
+    }, [loadNutritionPlan])
+  );
 
   const handleAIAction = (id) => {
     const msgs = {
@@ -161,58 +273,143 @@ export default function NutritionScreen() {
     Alert.alert('הוסף פריט', 'פיצ׳ר הוספת פריטים ידנית יהיה זמין בקרוב');
   };
 
-  const waterPct = waterGoal > 0 ? waterIntake / waterGoal : 0;
-  const SLIDER_W = width - 80;
+  const meals = nutritionPlan?.meals || [];
+  const totals = calculatePlanTotals(meals);
+  const dailyTargets = nutritionPlan?.dailyTargets || {
+    calories: 0,
+    protein: 0,
+    carbs: 0,
+    fat: 0,
+    waterLiters: waterGoal,
+  };
+  const displayedWaterGoal = dailyTargets.waterLiters > 0 ? dailyTargets.waterLiters : waterGoal;
+  const remainingCalories =
+    dailyTargets.calories > 0
+      ? Math.max(dailyTargets.calories - totals.calories, 0)
+      : totals.calories;
+  const hasMacroData =
+    dailyTargets.protein > 0 ||
+    dailyTargets.carbs > 0 ||
+    dailyTargets.fat > 0 ||
+    totals.protein > 0 ||
+    totals.carbs > 0 ||
+    totals.fat > 0;
+  const budgetProgress =
+    dailyTargets.calories > 0
+      ? Math.min((totals.calories / dailyTargets.calories) * 100, 100)
+      : meals.length > 0
+        ? 100
+        : 0;
+  const waterPct = displayedWaterGoal > 0 ? Math.min(waterIntake / displayedWaterGoal, 1) : 0;
+
+  if (loading) {
+    return (
+      <SafeAreaView style={styles.safe}>
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={COLORS.primary} />
+          <Text style={styles.loadingText}>טוען תפריט אישי...</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.safe}>
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.container}>
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={styles.container}
+        refreshControl={
+          <RefreshControl
+            colors={[COLORS.primary]}
+            onRefresh={() => loadNutritionPlan(true)}
+            refreshing={refreshing}
+            tintColor={COLORS.primary}
+          />
+        }
+      >
 
         {/* Title */}
         <Text style={styles.pageTitle}>תזונה</Text>
 
-        {/* Date Navigation */}
-        <View style={styles.dateNav}>
-          <TouchableOpacity onPress={nextDay} style={styles.dateArrow}>
-            <Ionicons name="chevron-forward" size={22} color={COLORS.textSecondary} />
-          </TouchableOpacity>
-          <View style={styles.dateCenter}>
-            <Text style={styles.dateText}>{formatDate(selectedDate)}</Text>
-            <Text style={styles.dateDayName}>{DAYS_HE[selectedDate.getDay()]}</Text>
+        {loadError ? (
+          <View style={styles.noticeCard}>
+            <Ionicons name="cloud-offline-outline" size={18} color={COLORS.warning} />
+            <Text style={styles.noticeText}>{loadError}</Text>
           </View>
-          <TouchableOpacity onPress={prevDay} style={styles.dateArrow}>
-            <Ionicons name="chevron-back" size={22} color={COLORS.textSecondary} />
-          </TouchableOpacity>
-        </View>
+        ) : null}
 
-        {/* Points Budget */}
-        <View style={styles.budgetCard}>
-          <View style={styles.budgetTop}>
-            <Text style={styles.budgetLabel}>נקודות שנותרו</Text>
-            <Text style={styles.budgetValue}>{remaining.toFixed(1)}</Text>
-            <Text style={styles.budgetTotal}>מתוך {nutritionBudget.total}</Text>
-          </View>
-          <View style={styles.budgetProgressBg}>
-            <View style={[styles.budgetProgressFill, { width: `${(usedTotal / nutritionBudget.total) * 100}%` }]} />
-          </View>
-          <View style={styles.macrosRow}>
-            <View style={styles.macroItem}>
-              <View style={[styles.macroDot, { backgroundColor: '#42A5F5' }]} />
-              <Text style={styles.macroLabel}>חלבון</Text>
-              <Text style={styles.macroVal}>{usedProtein.toFixed(1)}/{nutritionBudget.protein}</Text>
+        {nutritionPlan ? (
+          <View style={styles.planCard}>
+            <View style={styles.planHeaderRow}>
+              <MaterialCommunityIcons name="silverware-fork-knife" size={20} color={COLORS.primary} />
+              <View style={styles.planHeaderText}>
+                <Text style={styles.planTitle}>{nutritionPlan.title || 'תפריט אישי'}</Text>
+                <Text style={styles.planSubtitle}>התפריט שהמאמנת בנתה עבורך</Text>
+              </View>
             </View>
-            <View style={styles.macroItem}>
-              <View style={[styles.macroDot, { backgroundColor: '#FFA726' }]} />
-              <Text style={styles.macroLabel}>פחמימות</Text>
-              <Text style={styles.macroVal}>{usedCarbs.toFixed(1)}/{nutritionBudget.carbs}</Text>
-            </View>
-            <View style={styles.macroItem}>
-              <View style={[styles.macroDot, { backgroundColor: '#EF5350' }]} />
-              <Text style={styles.macroLabel}>שומן</Text>
-              <Text style={styles.macroVal}>{usedFat.toFixed(1)}/{nutritionBudget.fat}</Text>
-            </View>
+            {nutritionPlan.notes ? <Text style={styles.planNotes}>{nutritionPlan.notes}</Text> : null}
           </View>
-        </View>
+        ) : (
+          <View style={styles.emptyPlanCard}>
+            <Ionicons name="restaurant-outline" size={28} color={COLORS.textMuted} />
+            <Text style={styles.emptyPlanTitle}>עדיין לא הוגדר תפריט אישי</Text>
+            <Text style={styles.emptyPlanText}>
+              ברגע ששלהבת תשייך לך מתכונים וארוחות, הם יופיעו כאן עם קלוריות ותמונות.
+            </Text>
+          </View>
+        )}
+
+        {nutritionPlan ? (
+          <View style={styles.budgetCard}>
+            <View style={styles.budgetTop}>
+              <Text style={styles.budgetLabel}>
+                {dailyTargets.calories > 0 ? 'קלוריות שנותרו' : 'קלוריות בתפריט'}
+              </Text>
+              <Text style={styles.budgetValue}>{Math.round(remainingCalories)}</Text>
+              <Text style={styles.budgetTotal}>
+                {dailyTargets.calories > 0
+                  ? `מתוך ${Math.round(dailyTargets.calories)}`
+                  : meals.length > 0
+                    ? 'עדיין לא הוגדר יעד קלורי'
+                    : 'ממתין לשיוך מתכונים'}
+              </Text>
+            </View>
+            <View style={styles.budgetProgressBg}>
+              <View style={[styles.budgetProgressFill, { width: `${budgetProgress}%` }]} />
+            </View>
+            {hasMacroData ? (
+              <View style={styles.macrosRow}>
+                <View style={styles.macroItem}>
+                  <View style={[styles.macroDot, { backgroundColor: '#42A5F5' }]} />
+                  <Text style={styles.macroLabel}>חלבון</Text>
+                  <Text style={styles.macroVal}>
+                    {dailyTargets.protein > 0
+                      ? `${totals.protein.toFixed(0)}/${dailyTargets.protein}`
+                      : `${totals.protein.toFixed(0)} ג׳`}
+                  </Text>
+                </View>
+                <View style={styles.macroItem}>
+                  <View style={[styles.macroDot, { backgroundColor: '#FFA726' }]} />
+                  <Text style={styles.macroLabel}>פחמימות</Text>
+                  <Text style={styles.macroVal}>
+                    {dailyTargets.carbs > 0
+                      ? `${totals.carbs.toFixed(0)}/${dailyTargets.carbs}`
+                      : `${totals.carbs.toFixed(0)} ג׳`}
+                  </Text>
+                </View>
+                <View style={styles.macroItem}>
+                  <View style={[styles.macroDot, { backgroundColor: '#EF5350' }]} />
+                  <Text style={styles.macroLabel}>שומן</Text>
+                  <Text style={styles.macroVal}>
+                    {dailyTargets.fat > 0
+                      ? `${totals.fat.toFixed(0)}/${dailyTargets.fat}`
+                      : `${totals.fat.toFixed(0)} ג׳`}
+                  </Text>
+                </View>
+              </View>
+            ) : null}
+          </View>
+        ) : null}
 
         {/* Water Slider */}
         <View style={styles.waterCard}>
@@ -231,7 +428,7 @@ export default function NutritionScreen() {
               <TouchableOpacity onPress={() => setWaterIntake(waterIntake - 0.25)} style={styles.waterBtn}>
                 <Ionicons name="remove-circle-outline" size={28} color={COLORS.textSecondary} />
               </TouchableOpacity>
-              <Text style={styles.waterGoalText}>יעד: {waterGoal} ליטר</Text>
+              <Text style={styles.waterGoalText}>יעד: {displayedWaterGoal} ליטר</Text>
               <TouchableOpacity onPress={() => setWaterIntake(waterIntake + 0.25)} style={styles.waterBtn}>
                 <Ionicons name="add-circle-outline" size={28} color="#42A5F5" />
               </TouchableOpacity>
@@ -241,9 +438,22 @@ export default function NutritionScreen() {
 
         {/* Meals */}
         <View style={styles.mealsSection}>
-          {Object.entries(meals).map(([key, meal]) => (
-            <MealCard key={key} meal={meal} mealKey={key} onAddItem={handleAddItem} />
-          ))}
+          {meals.length === 0 ? (
+            <View style={styles.emptyMealsCard}>
+              <Ionicons name="images-outline" size={28} color={COLORS.textMuted} />
+              <Text style={styles.emptyText}>אין עדיין מתכונים להצגה</Text>
+            </View>
+          ) : (
+            meals.map((meal) => (
+              <MealCard
+                key={meal.id}
+                meal={meal}
+                mealKey={meal.id}
+                dailyCalorieTarget={dailyTargets.calories}
+                onAddItem={handleAddItem}
+              />
+            ))
+          )}
         </View>
 
         {/* AI Button */}
@@ -262,19 +472,53 @@ export default function NutritionScreen() {
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: COLORS.background },
   container: { paddingHorizontal: 16, paddingBottom: 40 },
+  loadingContainer: { alignItems: 'center', flex: 1, gap: 12, justifyContent: 'center' },
+  loadingText: { color: COLORS.textSecondary, fontSize: 15 },
   pageTitle: {
     color: COLORS.white, fontSize: 22, fontWeight: 'bold',
     textAlign: 'center', marginTop: 16, marginBottom: 16,
   },
-  dateNav: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    backgroundColor: COLORS.card, borderRadius: 14, padding: 12, marginBottom: 16,
-    borderWidth: 1, borderColor: COLORS.border,
+  noticeCard: {
+    alignItems: 'center',
+    backgroundColor: COLORS.card,
+    borderColor: COLORS.border,
+    borderRadius: 14,
+    borderWidth: 1,
+    flexDirection: 'row-reverse',
+    gap: 8,
+    marginBottom: 14,
+    padding: 12,
   },
-  dateArrow: { padding: 4 },
-  dateCenter: { alignItems: 'center' },
-  dateText: { color: COLORS.white, fontSize: 16, fontWeight: 'bold' },
-  dateDayName: { color: COLORS.textSecondary, fontSize: 12, marginTop: 2 },
+  noticeText: { color: COLORS.textSecondary, flex: 1, fontSize: 13, textAlign: 'right' },
+  planCard: {
+    backgroundColor: COLORS.card,
+    borderColor: COLORS.border,
+    borderRadius: 16,
+    borderWidth: 1,
+    marginBottom: 14,
+    padding: 16,
+  },
+  planHeaderRow: { alignItems: 'center', flexDirection: 'row-reverse', gap: 10 },
+  planHeaderText: { alignItems: 'flex-end', flex: 1 },
+  planTitle: { color: COLORS.white, fontSize: 18, fontWeight: '700', textAlign: 'right' },
+  planSubtitle: { color: COLORS.textSecondary, fontSize: 12, marginTop: 2, textAlign: 'right' },
+  planNotes: { color: COLORS.textSecondary, fontSize: 13, lineHeight: 20, marginTop: 12, textAlign: 'right' },
+  emptyPlanCard: {
+    alignItems: 'center',
+    backgroundColor: COLORS.card,
+    borderWidth: 1, borderColor: COLORS.border,
+    borderRadius: 16,
+    marginBottom: 14,
+    padding: 20,
+  },
+  emptyPlanTitle: { color: COLORS.white, fontSize: 16, fontWeight: '700', marginTop: 10 },
+  emptyPlanText: {
+    color: COLORS.textSecondary,
+    fontSize: 13,
+    lineHeight: 20,
+    marginTop: 8,
+    textAlign: 'center',
+  },
   budgetCard: {
     backgroundColor: COLORS.card, borderRadius: 16, padding: 18,
     marginBottom: 14, borderWidth: 1, borderColor: COLORS.border,
@@ -319,23 +563,66 @@ const styles = StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
     padding: 14,
   },
-  mealHeaderRight: { flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1, justifyContent: 'flex-end' },
+  mealHeaderRight: {
+    alignItems: 'center',
+    flex: 1,
+    flexDirection: 'row-reverse',
+    gap: 10,
+    justifyContent: 'flex-end',
+  },
+  mealHeaderTextWrap: { alignItems: 'flex-end', flex: 1 },
   mealName: { color: COLORS.white, fontSize: 15, fontWeight: '600' },
-  mealPoints: { color: COLORS.primary, fontSize: 13, fontWeight: 'bold' },
+  mealHeaderMeta: { color: COLORS.textSecondary, fontSize: 12, marginTop: 2, textAlign: 'right' },
+  mealHeaderImage: { backgroundColor: COLORS.cardLight, borderRadius: 12, height: 54, width: 54 },
+  mealHeaderImageFallback: {
+    alignItems: 'center',
+    backgroundColor: COLORS.cardLight,
+    borderRadius: 12,
+    height: 54,
+    justifyContent: 'center',
+    width: 54,
+  },
   mealProgressBg: { height: 4, backgroundColor: COLORS.cardLight, marginHorizontal: 14 },
   mealProgressFill: { height: '100%', backgroundColor: COLORS.primary },
   mealProgressLabel: {
     color: COLORS.textMuted, fontSize: 11, textAlign: 'center', paddingVertical: 6,
   },
   mealBody: { paddingHorizontal: 14, paddingBottom: 12 },
+  mealNote: {
+    color: COLORS.textSecondary,
+    fontSize: 12,
+    lineHeight: 18,
+    marginBottom: 6,
+    textAlign: 'right',
+  },
   mealItem: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    flexDirection: 'row-reverse',
     paddingVertical: 8, borderTopWidth: 1, borderTopColor: COLORS.border,
+  },
+  mealItemImage: {
+    backgroundColor: COLORS.cardLight,
+    borderRadius: 12,
+    height: 56,
+    marginLeft: 10,
+    width: 56,
+  },
+  mealItemImageFallback: {
+    alignItems: 'center',
+    backgroundColor: COLORS.cardLight,
+    borderRadius: 12,
+    height: 56,
+    justifyContent: 'center',
+    marginLeft: 10,
+    width: 56,
   },
   mealItemRight: { flex: 1, alignItems: 'flex-end' },
   mealItemName: { color: COLORS.white, fontSize: 14, textAlign: 'right' },
   mealItemPortion: { color: COLORS.textSecondary, fontSize: 11, textAlign: 'right', marginTop: 2 },
-  mealItemMacros: { flexDirection: 'row', gap: 4, marginRight: 8 },
+  mealItemNotes: { color: COLORS.textMuted, fontSize: 11, marginTop: 4, textAlign: 'right' },
+  mealItemMeta: { alignItems: 'flex-end', marginLeft: 10 },
+  mealItemCalories: { color: COLORS.primary, fontSize: 13, fontWeight: '700', marginBottom: 6 },
+  mealItemMacros: { flexDirection: 'row', gap: 4 },
   macroBadge: { paddingHorizontal: 6, paddingVertical: 3, borderRadius: 6 },
   macroText: { fontSize: 10, fontWeight: '600' },
   addItemBtn: {
@@ -343,6 +630,14 @@ const styles = StyleSheet.create({
     gap: 6, paddingTop: 10, borderTopWidth: 1, borderTopColor: COLORS.border,
   },
   addItemText: { color: COLORS.primary, fontSize: 14, fontWeight: '500' },
+  emptyMealsCard: {
+    alignItems: 'center',
+    backgroundColor: COLORS.card,
+    borderColor: COLORS.border,
+    borderRadius: 14,
+    borderWidth: 1,
+    padding: 20,
+  },
   aiBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
     backgroundColor: COLORS.primary, borderRadius: 16, paddingVertical: 16,
@@ -361,6 +656,7 @@ const styles = StyleSheet.create({
   },
   aiTitle: { color: COLORS.white, fontSize: 20, fontWeight: 'bold', textAlign: 'center', marginBottom: 4 },
   aiSubtitle: { color: COLORS.textSecondary, fontSize: 14, textAlign: 'center', marginBottom: 20 },
+  emptyText: { color: COLORS.textSecondary, fontSize: 14, marginTop: 10, textAlign: 'center' },
   aiAction: {
     flexDirection: 'row', alignItems: 'center', gap: 14,
     backgroundColor: COLORS.cardLight, borderRadius: 14, padding: 16,
