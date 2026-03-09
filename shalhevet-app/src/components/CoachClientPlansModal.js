@@ -17,6 +17,7 @@ import { coachAPI } from '../services/api';
 import { RECIPE_CATALOG, createNutritionMealFromRecipe } from '../data/recipeCatalog';
 
 const TABS = [
+  { id: 'account', label: 'חשבון', icon: 'key-outline' },
   { id: 'goals', label: 'יעדים', icon: 'flag-outline' },
   { id: 'nutrition', label: 'תפריט', icon: 'restaurant-outline' },
   { id: 'workout', label: 'אימונים', icon: 'barbell-outline' },
@@ -46,6 +47,17 @@ function createEmptyGoalsForm() {
     proteinTarget: '',
     targetDate: '',
     notes: '',
+  };
+}
+
+function createEmptyAccountForm() {
+  return {
+    name: '',
+    email: '',
+    phone: '',
+    newPassword: '',
+    confirmNewPassword: '',
+    isActive: true,
   };
 }
 
@@ -237,6 +249,57 @@ function serializeGoals(form) {
   };
 }
 
+function mapClientToAccountForm(client) {
+  if (!client) return createEmptyAccountForm();
+
+  return {
+    name: client.name || '',
+    email: client.email || '',
+    phone: client.phone || '',
+    newPassword: '',
+    confirmNewPassword: '',
+    isActive: client.isActive !== false,
+  };
+}
+
+function isValidEmail(value) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value || '').trim());
+}
+
+function validateAccountForm(form) {
+  const name = form.name.trim();
+  const email = form.email.trim().toLowerCase();
+  const password = form.newPassword.trim();
+  const confirmation = form.confirmNewPassword.trim();
+
+  if (!name) return 'שם הלקוחה הוא שדה חובה';
+  if (!email || !isValidEmail(email)) return 'נא להזין אימייל תקין';
+
+  if (password || confirmation) {
+    if (password.length < 6) return 'הסיסמה החדשה חייבת להיות לפחות 6 תווים';
+    if (!confirmation) return 'נא לאשר את הסיסמה החדשה';
+    if (password !== confirmation) return 'אימות הסיסמה אינו תואם';
+  }
+
+  return null;
+}
+
+function serializeAccount(form) {
+  const payload = {
+    name: form.name.trim(),
+    email: form.email.trim().toLowerCase(),
+    phone: form.phone.trim(),
+    isActive: form.isActive,
+  };
+
+  const nextPassword = form.newPassword.trim();
+  if (nextPassword) {
+    payload.newPassword = nextPassword;
+  }
+
+  return payload;
+}
+
 function serializeNutrition(form) {
   return {
     title: form.title.trim(),
@@ -365,6 +428,9 @@ function Field({
   placeholder,
   multiline = false,
   keyboardType = 'default',
+  secureTextEntry = false,
+  autoCapitalize = 'sentences',
+  autoCorrect = true,
 }) {
   return (
     <View style={styles.fieldGroup}>
@@ -378,6 +444,9 @@ function Field({
         keyboardType={keyboardType}
         multiline={multiline}
         numberOfLines={multiline ? 4 : 1}
+        secureTextEntry={secureTextEntry}
+        autoCapitalize={autoCapitalize}
+        autoCorrect={autoCorrect}
         textAlign="right"
         textAlignVertical={multiline ? 'top' : 'center'}
       />
@@ -399,6 +468,7 @@ export default function CoachClientPlansModal({ visible, clientId, onClose, onSa
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [client, setClient] = useState(null);
+  const [accountForm, setAccountForm] = useState(createEmptyAccountForm());
   const [goalsForm, setGoalsForm] = useState(createEmptyGoalsForm());
   const [nutritionForm, setNutritionForm] = useState(createEmptyNutritionForm());
   const [workoutForm, setWorkoutForm] = useState(createEmptyWorkoutForm());
@@ -407,6 +477,7 @@ export default function CoachClientPlansModal({ visible, clientId, onClose, onSa
 
   const resetForms = useCallback(() => {
     setClient(null);
+    setAccountForm(createEmptyAccountForm());
     setGoalsForm(createEmptyGoalsForm());
     setNutritionForm(createEmptyNutritionForm());
     setWorkoutForm(createEmptyWorkoutForm());
@@ -458,6 +529,7 @@ export default function CoachClientPlansModal({ visible, clientId, onClose, onSa
     try {
       const result = await coachAPI.getClient(clientId);
       setClient(result.client || null);
+      setAccountForm(mapClientToAccountForm(result.client));
       setGoalsForm(mapGoalsToForm(result.goals));
       setNutritionForm(mapNutritionToForm(result.nutritionPlan));
       setWorkoutForm(mapWorkoutToForm(result.workoutPlan));
@@ -483,6 +555,10 @@ export default function CoachClientPlansModal({ visible, clientId, onClose, onSa
 
   const updateGoalField = (field, value) => {
     setGoalsForm(current => ({ ...current, [field]: value }));
+  };
+
+  const updateAccountField = (field, value) => {
+    setAccountForm(current => ({ ...current, [field]: value }));
   };
 
   const updateNutritionField = (field, value) => {
@@ -639,6 +715,14 @@ export default function CoachClientPlansModal({ visible, clientId, onClose, onSa
   const handleSave = async () => {
     if (!clientId) return;
 
+    if (activeTab === 'account') {
+      const validationMessage = validateAccountForm(accountForm);
+      if (validationMessage) {
+        Alert.alert('שגיאה', validationMessage);
+        return;
+      }
+    }
+
     if (activeTab === 'nutrition') {
       const validationMessage = validateNutrition(nutritionForm);
       if (validationMessage) {
@@ -657,6 +741,23 @@ export default function CoachClientPlansModal({ visible, clientId, onClose, onSa
 
     setSaving(true);
     try {
+      if (activeTab === 'account') {
+        const previousEmail = String(client?.email || '')
+          .trim()
+          .toLowerCase();
+        const nextEmail = accountForm.email.trim().toLowerCase();
+        const emailChanged = Boolean(nextEmail) && nextEmail !== previousEmail;
+        const result = await coachAPI.updateClient(clientId, serializeAccount(accountForm));
+        setClient(result.client || null);
+        setAccountForm(mapClientToAccountForm(result.client));
+        Alert.alert(
+          '✅ נשמר',
+          emailChanged
+            ? `פרטי החשבון עודכנו בהצלחה.\nמההתחברות הבאה הלקוחה צריכה להתחבר עם האימייל החדש: ${result.client?.email || nextEmail}`
+            : 'פרטי החשבון עודכנו בהצלחה'
+        );
+      }
+
       if (activeTab === 'goals') {
         const result = await coachAPI.updateClientGoals(clientId, serializeGoals(goalsForm));
         setGoalsForm(mapGoalsToForm(result.goals));
@@ -771,6 +872,119 @@ export default function CoachClientPlansModal({ visible, clientId, onClose, onSa
           onChangeText={value => updateGoalField('notes', value)}
           placeholder="דגשים לליווי, הערות, יעד ביניים..."
           multiline
+        />
+      </SectionCard>
+    </>
+  );
+
+  const renderAccountTab = () => (
+    <>
+      <SectionCard
+        title="חשבון והתחברות"
+        subtitle="עדכון פרטי כניסה של הלקוחה וסטטוס החשבון"
+        icon="key-outline"
+      >
+        <Field
+          label="שם מלא"
+          value={accountForm.name}
+          onChangeText={value => updateAccountField('name', value)}
+          placeholder="שם פרטי ומשפחה"
+        />
+        <Field
+          label="אימייל התחברות"
+          value={accountForm.email}
+          onChangeText={value => updateAccountField('email', value)}
+          placeholder="client@email.com"
+          keyboardType="email-address"
+          autoCapitalize="none"
+          autoCorrect={false}
+        />
+        <Field
+          label="טלפון"
+          value={accountForm.phone}
+          onChangeText={value => updateAccountField('phone', value)}
+          placeholder="050-0000000"
+          keyboardType="phone-pad"
+        />
+
+        <View style={styles.fieldGroup}>
+          <Text style={styles.fieldLabel}>סטטוס חשבון</Text>
+          <View style={styles.accountStatusRow}>
+            <TouchableOpacity
+              style={[
+                styles.accountStatusBtn,
+                accountForm.isActive && styles.accountStatusBtnActive,
+              ]}
+              onPress={() => updateAccountField('isActive', true)}
+            >
+              <Ionicons
+                name="checkmark-circle-outline"
+                size={18}
+                color={accountForm.isActive ? COLORS.success : COLORS.textMuted}
+              />
+              <Text
+                style={[
+                  styles.accountStatusBtnText,
+                  accountForm.isActive && styles.accountStatusBtnTextActive,
+                ]}
+              >
+                פעילה
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[
+                styles.accountStatusBtn,
+                !accountForm.isActive && styles.accountStatusBtnInactive,
+              ]}
+              onPress={() => updateAccountField('isActive', false)}
+            >
+              <Ionicons
+                name="pause-circle-outline"
+                size={18}
+                color={!accountForm.isActive ? COLORS.warning : COLORS.textMuted}
+              />
+              <Text
+                style={[
+                  styles.accountStatusBtnText,
+                  !accountForm.isActive && styles.accountStatusBtnTextInactive,
+                ]}
+              >
+                לא פעילה
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        <View style={styles.accountInfoBox}>
+          <Ionicons name="information-circle-outline" size={18} color={COLORS.info} />
+          <Text style={styles.accountInfoText}>
+            הלקוחה מתחברת עם האימייל והסיסמה שמוגדרים כאן. אם תשני את האימייל, הכניסה הבאה שלה תהיה עם האימייל החדש.
+          </Text>
+        </View>
+      </SectionCard>
+
+      <SectionCard
+        title="איפוס סיסמה"
+        subtitle="השאירי ריק אם אין צורך לשנות את הסיסמה הנוכחית"
+        icon="lock-closed-outline"
+      >
+        <Field
+          label="סיסמה חדשה"
+          value={accountForm.newPassword}
+          onChangeText={value => updateAccountField('newPassword', value)}
+          placeholder="לפחות 6 תווים"
+          secureTextEntry
+          autoCapitalize="none"
+          autoCorrect={false}
+        />
+        <Field
+          label="אימות סיסמה חדשה"
+          value={accountForm.confirmNewPassword}
+          onChangeText={value => updateAccountField('confirmNewPassword', value)}
+          placeholder="הקלידי שוב את הסיסמה החדשה"
+          secureTextEntry
+          autoCapitalize="none"
+          autoCorrect={false}
         />
       </SectionCard>
     </>
@@ -892,10 +1106,7 @@ export default function CoachClientPlansModal({ visible, clientId, onClose, onSa
                   {category}
                 </Text>
                 <View
-                  style={[
-                    styles.recipeCategoryCount,
-                    isActive && styles.recipeCategoryCountActive,
-                  ]}
+                  style={[styles.recipeCategoryCount, isActive && styles.recipeCategoryCountActive]}
                 >
                   <Text
                     style={[
@@ -928,7 +1139,9 @@ export default function CoachClientPlansModal({ visible, clientId, onClose, onSa
                   <View key={recipe.id} style={styles.recipeCard}>
                     <View style={styles.recipeCardHeader}>
                       <View style={styles.recipeCaloriesPill}>
-                        <Text style={styles.recipeCaloriesPillText}>{recipe.caloriesPerServing} קל׳</Text>
+                        <Text style={styles.recipeCaloriesPillText}>
+                          {recipe.caloriesPerServing} קל׳
+                        </Text>
                       </View>
                       <View style={styles.recipeCardTitleWrap}>
                         <Text style={styles.recipeCardTitle}>{recipe.title}</Text>
@@ -1356,6 +1569,7 @@ export default function CoachClientPlansModal({ visible, clientId, onClose, onSa
   );
 
   const getSaveLabel = () => {
+    if (activeTab === 'account') return 'שמרי חשבון';
     if (activeTab === 'goals') return 'שמרי יעדים';
     if (activeTab === 'nutrition') return 'שמרי תפריט';
     return 'שמרי תוכנית';
@@ -1373,7 +1587,7 @@ export default function CoachClientPlansModal({ visible, clientId, onClose, onSa
             </TouchableOpacity>
             <View style={styles.modalHeaderText}>
               <Text style={styles.modalTitle}>ניהול לקוחה</Text>
-              <Text style={styles.modalSub}>יעדים, תפריט אישי ותוכנית אימון</Text>
+              <Text style={styles.modalSub}>חשבון, יעדים, תפריט אישי ותוכנית אימון</Text>
             </View>
             <View style={styles.headerIconBtn} />
           </View>
@@ -1453,6 +1667,7 @@ export default function CoachClientPlansModal({ visible, clientId, onClose, onSa
                 contentContainerStyle={styles.contentContainer}
                 showsVerticalScrollIndicator={false}
               >
+                {activeTab === 'account' ? renderAccountTab() : null}
                 {activeTab === 'goals' ? renderGoalsTab() : null}
                 {activeTab === 'nutrition' ? renderNutritionTab() : null}
                 {activeTab === 'workout' ? renderWorkoutTab() : null}
@@ -1479,6 +1694,58 @@ export default function CoachClientPlansModal({ visible, clientId, onClose, onSa
 }
 
 const styles = StyleSheet.create({
+  accountInfoBox: {
+    alignItems: 'flex-start',
+    backgroundColor: `${COLORS.info}14`,
+    borderColor: `${COLORS.info}33`,
+    borderRadius: 14,
+    borderWidth: 1,
+    flexDirection: 'row-reverse',
+    gap: 8,
+    padding: 12,
+  },
+  accountInfoText: {
+    color: COLORS.textSecondary,
+    flex: 1,
+    fontSize: 12,
+    lineHeight: 18,
+    textAlign: 'right',
+  },
+  accountStatusBtn: {
+    alignItems: 'center',
+    backgroundColor: COLORS.card,
+    borderColor: COLORS.border,
+    borderRadius: 12,
+    borderWidth: 1,
+    flex: 1,
+    flexDirection: 'row-reverse',
+    gap: 6,
+    justifyContent: 'center',
+    paddingVertical: 12,
+  },
+  accountStatusBtnActive: {
+    backgroundColor: `${COLORS.success}18`,
+    borderColor: `${COLORS.success}44`,
+  },
+  accountStatusBtnInactive: {
+    backgroundColor: `${COLORS.warning}18`,
+    borderColor: `${COLORS.warning}44`,
+  },
+  accountStatusBtnText: {
+    color: COLORS.textSecondary,
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  accountStatusBtnTextActive: {
+    color: COLORS.success,
+  },
+  accountStatusBtnTextInactive: {
+    color: COLORS.warning,
+  },
+  accountStatusRow: {
+    flexDirection: 'row-reverse',
+    gap: 10,
+  },
   cancelBtn: {
     alignItems: 'center',
     borderColor: COLORS.border,
@@ -1580,19 +1847,6 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '700',
   },
-  itemImagePreviewWrap: {
-    backgroundColor: COLORS.card,
-    borderColor: COLORS.border,
-    borderRadius: 12,
-    borderWidth: 1,
-    marginBottom: 12,
-    overflow: 'hidden',
-  },
-  itemImagePreview: {
-    backgroundColor: COLORS.card,
-    height: 160,
-    width: '100%',
-  },
   innerSectionHeader: {
     alignItems: 'center',
     flexDirection: 'row',
@@ -1617,6 +1871,19 @@ const styles = StyleSheet.create({
   },
   inputMultiline: {
     minHeight: 92,
+  },
+  itemImagePreview: {
+    backgroundColor: COLORS.card,
+    height: 160,
+    width: '100%',
+  },
+  itemImagePreviewWrap: {
+    backgroundColor: COLORS.card,
+    borderColor: COLORS.border,
+    borderRadius: 12,
+    borderWidth: 1,
+    marginBottom: 12,
+    overflow: 'hidden',
   },
   loadingBox: {
     alignItems: 'center',
@@ -1693,6 +1960,19 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: 'bold',
   },
+  recipeCaloriesPill: {
+    backgroundColor: `${COLORS.primary}1F`,
+    borderColor: `${COLORS.primary}55`,
+    borderRadius: 999,
+    borderWidth: 1,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  recipeCaloriesPillText: {
+    color: COLORS.primary,
+    fontSize: 12,
+    fontWeight: '700',
+  },
   recipeCard: {
     backgroundColor: COLORS.card,
     borderColor: COLORS.border,
@@ -1740,19 +2020,6 @@ const styles = StyleSheet.create({
   recipeCardTitleWrap: {
     alignItems: 'flex-end',
     flex: 1,
-  },
-  recipeCaloriesPill: {
-    backgroundColor: `${COLORS.primary}1F`,
-    borderColor: `${COLORS.primary}55`,
-    borderRadius: 999,
-    borderWidth: 1,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-  },
-  recipeCaloriesPillText: {
-    color: COLORS.primary,
-    fontSize: 12,
-    fontWeight: '700',
   },
   recipeCategoryChip: {
     alignItems: 'center',

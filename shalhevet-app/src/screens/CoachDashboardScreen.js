@@ -55,7 +55,7 @@ function ClientCard({ client, onPress }) {
           <Text style={styles.clientName}>{client.name}</Text>
           <Text style={styles.clientEmail}>{client.email}</Text>
           {client.goal && <Text style={styles.clientGoal}>🎯 {client.goal}</Text>}
-          <Text style={styles.clientActionHint}>לחצי לעריכת יעדים, תפריט ואימונים</Text>
+          <Text style={styles.clientActionHint}>לחצי לעריכת חשבון, יעדים ותוכניות</Text>
         </View>
         <View style={styles.clientMeta}>
           {client.weight && <Text style={styles.clientWeight}>{`${client.weight} ק״ג`}</Text>}

@@ -80,6 +80,34 @@ function parseOptionalText(value) {
   return String(value).trim();
 }
 
+function parseOptionalEmail(value) {
+  if (value === undefined) return undefined;
+
+  const email = String(value || "")
+    .toLowerCase()
+    .trim();
+
+  if (!email) {
+    throw createBadRequest("נא למלא אימייל תקין");
+  }
+
+  const isValidEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+  if (!isValidEmail) {
+    throw createBadRequest("נא למלא אימייל תקין");
+  }
+
+  return email;
+}
+
+function parseOptionalBoolean(value, fieldName) {
+  if (value === undefined) return undefined;
+  if (typeof value === "boolean") return value;
+  if (value === "true") return true;
+  if (value === "false") return false;
+
+  throw createBadRequest(`השדה ${fieldName} חייב להיות true או false`);
+}
+
 function parseOptionalHttpUrl(value, fieldName) {
   if (value === undefined) return undefined;
   if (value === null || value === "") return "";
@@ -521,6 +549,7 @@ router.put("/clients/:id", async (req, res) => {
 
     const {
       name,
+      email,
       phone,
       weight,
       height,
@@ -533,19 +562,54 @@ router.put("/clients/:id", async (req, res) => {
     } = req.body;
 
     const updates = {};
-    if (name !== undefined) updates.name = name;
-    if (phone !== undefined) updates.phone = phone;
+
+    const normalizedName = parseOptionalText(name);
+    if (normalizedName !== undefined) {
+      if (!normalizedName) {
+        return res.status(400).json({ error: "שם הלקוחה לא יכול להיות ריק" });
+      }
+      updates.name = normalizedName;
+    }
+
+    const normalizedEmail = parseOptionalEmail(email);
+    if (normalizedEmail !== undefined) {
+      const existingUser = await getUserByEmail(normalizedEmail);
+      if (existingUser && existingUser.id !== user.id) {
+        return res.status(409).json({ error: "אימייל זה כבר קיים במערכת" });
+      }
+      updates.email = normalizedEmail;
+    }
+
+    const normalizedPhone = parseOptionalText(phone);
+    if (normalizedPhone !== undefined) updates.phone = normalizedPhone;
     if (weight !== undefined) updates.weight = parseFloat(weight);
     if (height !== undefined) updates.height = parseFloat(height);
     if (age !== undefined) updates.age = parseInt(age);
-    if (goal !== undefined) updates.goal = goal;
-    if (activityLevel !== undefined) updates.activityLevel = activityLevel;
-    if (notes !== undefined) updates.notes = notes;
-    if (isActive !== undefined) updates.isActive = isActive;
+
+    const normalizedGoal = parseOptionalText(goal);
+    if (normalizedGoal !== undefined) updates.goal = normalizedGoal;
+
+    const normalizedActivityLevel = parseOptionalText(activityLevel);
+    if (normalizedActivityLevel !== undefined) {
+      updates.activityLevel = normalizedActivityLevel;
+    }
+
+    const normalizedNotes = parseOptionalText(notes);
+    if (normalizedNotes !== undefined) updates.notes = normalizedNotes;
+
+    const normalizedIsActive = parseOptionalBoolean(isActive, "isActive");
+    if (normalizedIsActive !== undefined) updates.isActive = normalizedIsActive;
 
     // אפשרות לאפס סיסמה
-    if (newPassword && newPassword.length >= 6) {
-      updates.password = await bcrypt.hash(newPassword, 10);
+    const normalizedNewPassword = parseOptionalText(newPassword);
+    if (normalizedNewPassword) {
+      if (normalizedNewPassword.length < 6) {
+        return res
+          .status(400)
+          .json({ error: "הסיסמה החדשה חייבת להיות לפחות 6 תווים" });
+      }
+
+      updates.password = await bcrypt.hash(normalizedNewPassword, 10);
     }
 
     const updated = await updateUser(req.params.id, updates);
@@ -553,7 +617,14 @@ router.put("/clients/:id", async (req, res) => {
 
     res.json({ success: true, message: "פרטי הלקוחה עודכנו ✅", client: safe });
   } catch (err) {
-    res.status(500).json({ error: "שגיאה בעדכון לקוחה" });
+    if (err.code === "23505") {
+      return res.status(409).json({ error: "אימייל זה כבר קיים במערכת" });
+    }
+
+    const status = err.status || 500;
+    res
+      .status(status)
+      .json({ error: status === 500 ? "שגיאה בעדכון לקוחה" : err.message });
   }
 });
 
