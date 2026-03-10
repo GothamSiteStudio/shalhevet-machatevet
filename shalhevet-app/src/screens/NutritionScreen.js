@@ -96,16 +96,15 @@ function MealCard({ meal, mealKey, dailyCalorieTarget, onAddItem }) {
   const mealTotals = calculatePlanTotals([meal]);
   const mealImage = meal.items.find(item => isRemoteImageUrl(item.imageUrl))?.imageUrl;
   const pct =
-    dailyCalorieTarget > 0
-      ? Math.min((mealTotals.calories / dailyCalorieTarget) * 100, 100)
-      : 0;
+    dailyCalorieTarget > 0 ? Math.min((mealTotals.calories / dailyCalorieTarget) * 100, 100) : 0;
 
   return (
     <View style={styles.mealCard}>
       <TouchableOpacity style={styles.mealHeader} onPress={() => setExpanded(!expanded)}>
         <Ionicons
           name={expanded ? 'chevron-up' : 'chevron-down'}
-          size={18} color={COLORS.textSecondary}
+          size={18}
+          color={COLORS.textSecondary}
         />
         <View style={styles.mealHeaderRight}>
           <View style={styles.mealHeaderTextWrap}>
@@ -139,10 +138,14 @@ function MealCard({ meal, mealKey, dailyCalorieTarget, onAddItem }) {
       {expanded && (
         <View style={styles.mealBody}>
           {meal.notes ? <Text style={styles.mealNote}>{meal.notes}</Text> : null}
-          {meal.items.map((item) => (
+          {meal.items.map(item => (
             <View key={item.id} style={styles.mealItem}>
               {isRemoteImageUrl(item.imageUrl) ? (
-                <Image source={{ uri: item.imageUrl }} style={styles.mealItemImage} resizeMode="cover" />
+                <Image
+                  source={{ uri: item.imageUrl }}
+                  style={styles.mealItemImage}
+                  resizeMode="cover"
+                />
               ) : (
                 <View style={styles.mealItemImageFallback}>
                   <Ionicons name="image-outline" size={18} color={COLORS.textMuted} />
@@ -155,7 +158,9 @@ function MealCard({ meal, mealKey, dailyCalorieTarget, onAddItem }) {
               </View>
               <View style={styles.mealItemMeta}>
                 <Text style={styles.mealItemCalories}>{Math.round(item.calories)} קל׳</Text>
-                {toNumber(item.protein) > 0 || toNumber(item.carbs) > 0 || toNumber(item.fat) > 0 ? (
+                {toNumber(item.protein) > 0 ||
+                toNumber(item.carbs) > 0 ||
+                toNumber(item.fat) > 0 ? (
                   <View style={styles.mealItemMacros}>
                     <View style={[styles.macroBadge, { backgroundColor: '#1565C044' }]}>
                       <Text style={[styles.macroText, { color: '#42A5F5' }]}>
@@ -201,11 +206,14 @@ function AIModal({ visible, onClose, onAction }) {
           <View style={styles.modalHandle} />
           <Text style={styles.aiTitle}>✨ פעולות AI</Text>
           <Text style={styles.aiSubtitle}>מה תרצי לעשות?</Text>
-          {actions.map((a) => (
+          {actions.map(a => (
             <TouchableOpacity
               key={a.id}
               style={[styles.aiAction, { borderColor: a.color + '44' }]}
-              onPress={() => { onAction(a.id); onClose(); }}
+              onPress={() => {
+                onAction(a.id);
+                onClose();
+              }}
             >
               <View style={[styles.aiActionIcon, { backgroundColor: a.color + '22' }]}>
                 <Ionicons name={a.icon} size={22} color={a.color} />
@@ -220,7 +228,7 @@ function AIModal({ visible, onClose, onAction }) {
   );
 }
 
-export default function NutritionScreen() {
+export default function NutritionScreen({ navigation }) {
   const { waterIntake, waterGoal, setWaterGoal, setWaterIntake } = useStore();
   const [nutritionPlan, setNutritionPlan] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -228,30 +236,33 @@ export default function NutritionScreen() {
   const [loadError, setLoadError] = useState('');
   const [showAI, setShowAI] = useState(false);
 
-  const loadNutritionPlan = useCallback(async (isRefresh = false) => {
-    if (isRefresh) {
-      setRefreshing(true);
-    } else {
-      setLoading(true);
-    }
-
-    try {
-      const result = await usersAPI.getNutritionPlan();
-      const plan = normalizeNutritionPlan(result.nutritionPlan);
-      setNutritionPlan(plan);
-      setLoadError('');
-
-      if (plan?.dailyTargets?.waterLiters > 0) {
-        setWaterGoal(plan.dailyTargets.waterLiters);
+  const loadNutritionPlan = useCallback(
+    async (isRefresh = false) => {
+      if (isRefresh) {
+        setRefreshing(true);
+      } else {
+        setLoading(true);
       }
-    } catch (err) {
-      setNutritionPlan(null);
-      setLoadError(err.message || 'לא ניתן לטעון את התפריט האישי כרגע');
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  }, [setWaterGoal]);
+
+      try {
+        const result = await usersAPI.getNutritionPlan();
+        const plan = normalizeNutritionPlan(result.nutritionPlan);
+        setNutritionPlan(plan);
+        setLoadError('');
+
+        if (plan?.dailyTargets?.waterLiters > 0) {
+          setWaterGoal(plan.dailyTargets.waterLiters);
+        }
+      } catch (err) {
+        setNutritionPlan(null);
+        setLoadError(err.message || 'לא ניתן לטעון את התפריט האישי כרגע');
+      } finally {
+        setLoading(false);
+        setRefreshing(false);
+      }
+    },
+    [setWaterGoal]
+  );
 
   useFocusEffect(
     useCallback(() => {
@@ -259,7 +270,7 @@ export default function NutritionScreen() {
     }, [loadNutritionPlan])
   );
 
-  const handleAIAction = (id) => {
+  const handleAIAction = id => {
     const msgs = {
       photo: 'פיצ׳ר זיהוי תמונה יהיה זמין בקרוב! 📸',
       ask: 'הצ׳אט עם AI יהיה זמין בקרוב! 🤖',
@@ -269,7 +280,7 @@ export default function NutritionScreen() {
     Alert.alert('✨ בקרוב!', msgs[id] || 'פיצ׳ר זה יהיה זמין בקרוב');
   };
 
-  const handleAddItem = (mealKey) => {
+  const handleAddItem = mealKey => {
     Alert.alert('הוסף פריט', 'פיצ׳ר הוספת פריטים ידנית יהיה זמין בקרוב');
   };
 
@@ -327,7 +338,6 @@ export default function NutritionScreen() {
           />
         }
       >
-
         {/* Title */}
         <Text style={styles.pageTitle}>תזונה</Text>
 
@@ -341,13 +351,19 @@ export default function NutritionScreen() {
         {nutritionPlan ? (
           <View style={styles.planCard}>
             <View style={styles.planHeaderRow}>
-              <MaterialCommunityIcons name="silverware-fork-knife" size={20} color={COLORS.primary} />
+              <MaterialCommunityIcons
+                name="silverware-fork-knife"
+                size={20}
+                color={COLORS.primary}
+              />
               <View style={styles.planHeaderText}>
                 <Text style={styles.planTitle}>{nutritionPlan.title || 'תפריט אישי'}</Text>
                 <Text style={styles.planSubtitle}>התפריט שהמאמנת בנתה עבורך</Text>
               </View>
             </View>
-            {nutritionPlan.notes ? <Text style={styles.planNotes}>{nutritionPlan.notes}</Text> : null}
+            {nutritionPlan.notes ? (
+              <Text style={styles.planNotes}>{nutritionPlan.notes}</Text>
+            ) : null}
           </View>
         ) : (
           <View style={styles.emptyPlanCard}>
@@ -411,6 +427,26 @@ export default function NutritionScreen() {
           </View>
         ) : null}
 
+        {/* Food Diary Button */}
+        <TouchableOpacity
+          style={styles.diaryBtn}
+          onPress={() => navigation.navigate('FoodDiary')}
+          activeOpacity={0.85}
+        >
+          <View style={styles.diaryBtnContent}>
+            <Ionicons name="chevron-back" size={18} color={COLORS.textSecondary} />
+            <View style={styles.diaryBtnTextWrap}>
+              <Text style={styles.diaryBtnTitle}>יומן אכילה</Text>
+              <Text style={styles.diaryBtnSubtitle}>
+                תעדי מה אכלת · בוקר, צהריים, ערב ונשנושים
+              </Text>
+            </View>
+            <View style={styles.diaryBtnIcon}>
+              <MaterialCommunityIcons name="notebook-edit-outline" size={24} color="#66BB6A" />
+            </View>
+          </View>
+        </TouchableOpacity>
+
         {/* Water Slider */}
         <View style={styles.waterCard}>
           <View style={styles.waterHeader}>
@@ -425,11 +461,17 @@ export default function NutritionScreen() {
               <View style={[styles.waterSliderFill, { width: `${waterPct * 100}%` }]} />
             </View>
             <View style={styles.waterBtns}>
-              <TouchableOpacity onPress={() => setWaterIntake(waterIntake - 0.25)} style={styles.waterBtn}>
+              <TouchableOpacity
+                onPress={() => setWaterIntake(waterIntake - 0.25)}
+                style={styles.waterBtn}
+              >
                 <Ionicons name="remove-circle-outline" size={28} color={COLORS.textSecondary} />
               </TouchableOpacity>
               <Text style={styles.waterGoalText}>יעד: {displayedWaterGoal} ליטר</Text>
-              <TouchableOpacity onPress={() => setWaterIntake(waterIntake + 0.25)} style={styles.waterBtn}>
+              <TouchableOpacity
+                onPress={() => setWaterIntake(waterIntake + 0.25)}
+                style={styles.waterBtn}
+              >
                 <Ionicons name="add-circle-outline" size={28} color="#42A5F5" />
               </TouchableOpacity>
             </View>
@@ -444,7 +486,7 @@ export default function NutritionScreen() {
               <Text style={styles.emptyText}>אין עדיין מתכונים להצגה</Text>
             </View>
           ) : (
-            meals.map((meal) => (
+            meals.map(meal => (
               <MealCard
                 key={meal.id}
                 meal={meal}
@@ -461,7 +503,6 @@ export default function NutritionScreen() {
           <MaterialCommunityIcons name="auto-fix" size={22} color={COLORS.white} />
           <Text style={styles.aiBtnText}>פעולות AI ✨</Text>
         </TouchableOpacity>
-
       </ScrollView>
 
       <AIModal visible={showAI} onClose={() => setShowAI(false)} onAction={handleAIAction} />
@@ -474,9 +515,39 @@ const styles = StyleSheet.create({
   container: { paddingHorizontal: 16, paddingBottom: 40 },
   loadingContainer: { alignItems: 'center', flex: 1, gap: 12, justifyContent: 'center' },
   loadingText: { color: COLORS.textSecondary, fontSize: 15 },
+  // Food Diary Button
+  diaryBtn: {
+    backgroundColor: COLORS.card,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#66BB6A44',
+    marginBottom: 14,
+    overflow: 'hidden',
+  },
+  diaryBtnContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 16,
+    gap: 12,
+  },
+  diaryBtnIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: 14,
+    backgroundColor: '#66BB6A18',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  diaryBtnTextWrap: { flex: 1, alignItems: 'flex-end' },
+  diaryBtnTitle: { color: COLORS.white, fontSize: 17, fontWeight: '700' },
+  diaryBtnSubtitle: { color: COLORS.textSecondary, fontSize: 12, marginTop: 3, textAlign: 'right' },
   pageTitle: {
-    color: COLORS.white, fontSize: 22, fontWeight: 'bold',
-    textAlign: 'center', marginTop: 16, marginBottom: 16,
+    color: COLORS.white,
+    fontSize: 22,
+    fontWeight: 'bold',
+    textAlign: 'center',
+    marginTop: 16,
+    marginBottom: 16,
   },
   noticeCard: {
     alignItems: 'center',
@@ -502,11 +573,18 @@ const styles = StyleSheet.create({
   planHeaderText: { alignItems: 'flex-end', flex: 1 },
   planTitle: { color: COLORS.white, fontSize: 18, fontWeight: '700', textAlign: 'right' },
   planSubtitle: { color: COLORS.textSecondary, fontSize: 12, marginTop: 2, textAlign: 'right' },
-  planNotes: { color: COLORS.textSecondary, fontSize: 13, lineHeight: 20, marginTop: 12, textAlign: 'right' },
+  planNotes: {
+    color: COLORS.textSecondary,
+    fontSize: 13,
+    lineHeight: 20,
+    marginTop: 12,
+    textAlign: 'right',
+  },
   emptyPlanCard: {
     alignItems: 'center',
     backgroundColor: COLORS.card,
-    borderWidth: 1, borderColor: COLORS.border,
+    borderWidth: 1,
+    borderColor: COLORS.border,
     borderRadius: 16,
     marginBottom: 14,
     padding: 20,
@@ -520,16 +598,23 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   budgetCard: {
-    backgroundColor: COLORS.card, borderRadius: 16, padding: 18,
-    marginBottom: 14, borderWidth: 1, borderColor: COLORS.border,
+    backgroundColor: COLORS.card,
+    borderRadius: 16,
+    padding: 18,
+    marginBottom: 14,
+    borderWidth: 1,
+    borderColor: COLORS.border,
   },
   budgetTop: { alignItems: 'center', marginBottom: 12 },
   budgetLabel: { color: COLORS.textSecondary, fontSize: 13, marginBottom: 4 },
   budgetValue: { color: COLORS.primary, fontSize: 48, fontWeight: 'bold', lineHeight: 54 },
   budgetTotal: { color: COLORS.textMuted, fontSize: 13 },
   budgetProgressBg: {
-    height: 8, backgroundColor: COLORS.cardLight, borderRadius: 4,
-    overflow: 'hidden', marginBottom: 14,
+    height: 8,
+    backgroundColor: COLORS.cardLight,
+    borderRadius: 4,
+    overflow: 'hidden',
+    marginBottom: 14,
   },
   budgetProgressFill: { height: '100%', backgroundColor: COLORS.primary, borderRadius: 4 },
   macrosRow: { flexDirection: 'row', justifyContent: 'space-around' },
@@ -538,17 +623,29 @@ const styles = StyleSheet.create({
   macroLabel: { color: COLORS.textSecondary, fontSize: 11 },
   macroVal: { color: COLORS.white, fontSize: 13, fontWeight: '600' },
   waterCard: {
-    backgroundColor: COLORS.card, borderRadius: 16, padding: 16,
-    marginBottom: 14, borderWidth: 1, borderColor: COLORS.border,
+    backgroundColor: COLORS.card,
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 14,
+    borderWidth: 1,
+    borderColor: COLORS.border,
   },
-  waterHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
+  waterHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
   waterTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   waterLabel: { color: COLORS.white, fontSize: 15, fontWeight: '600' },
   waterValue: { color: '#42A5F5', fontSize: 20, fontWeight: 'bold' },
   waterSliderWrap: {},
   waterSliderBg: {
-    height: 10, backgroundColor: COLORS.cardLight, borderRadius: 5,
-    overflow: 'hidden', marginBottom: 12,
+    height: 10,
+    backgroundColor: COLORS.cardLight,
+    borderRadius: 5,
+    overflow: 'hidden',
+    marginBottom: 12,
   },
   waterSliderFill: { height: '100%', backgroundColor: '#42A5F5', borderRadius: 5 },
   waterBtns: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
@@ -556,11 +653,16 @@ const styles = StyleSheet.create({
   waterGoalText: { color: COLORS.textSecondary, fontSize: 13 },
   mealsSection: { gap: 10, marginBottom: 20 },
   mealCard: {
-    backgroundColor: COLORS.card, borderRadius: 14,
-    borderWidth: 1, borderColor: COLORS.border, overflow: 'hidden',
+    backgroundColor: COLORS.card,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    overflow: 'hidden',
   },
   mealHeader: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     padding: 14,
   },
   mealHeaderRight: {
@@ -585,7 +687,10 @@ const styles = StyleSheet.create({
   mealProgressBg: { height: 4, backgroundColor: COLORS.cardLight, marginHorizontal: 14 },
   mealProgressFill: { height: '100%', backgroundColor: COLORS.primary },
   mealProgressLabel: {
-    color: COLORS.textMuted, fontSize: 11, textAlign: 'center', paddingVertical: 6,
+    color: COLORS.textMuted,
+    fontSize: 11,
+    textAlign: 'center',
+    paddingVertical: 6,
   },
   mealBody: { paddingHorizontal: 14, paddingBottom: 12 },
   mealNote: {
@@ -598,7 +703,9 @@ const styles = StyleSheet.create({
   mealItem: {
     alignItems: 'flex-start',
     flexDirection: 'row-reverse',
-    paddingVertical: 8, borderTopWidth: 1, borderTopColor: COLORS.border,
+    paddingVertical: 8,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.border,
   },
   mealItemImage: {
     backgroundColor: COLORS.cardLight,
@@ -626,8 +733,13 @@ const styles = StyleSheet.create({
   macroBadge: { paddingHorizontal: 6, paddingVertical: 3, borderRadius: 6 },
   macroText: { fontSize: 10, fontWeight: '600' },
   addItemBtn: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-    gap: 6, paddingTop: 10, borderTopWidth: 1, borderTopColor: COLORS.border,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.border,
   },
   addItemText: { color: COLORS.primary, fontSize: 14, fontWeight: '500' },
   emptyMealsCard: {
@@ -639,29 +751,68 @@ const styles = StyleSheet.create({
     padding: 20,
   },
   aiBtn: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-    backgroundColor: COLORS.primary, borderRadius: 16, paddingVertical: 16,
-    gap: 10, shadowColor: COLORS.primary, shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.4, shadowRadius: 10, elevation: 6,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: COLORS.primary,
+    borderRadius: 16,
+    paddingVertical: 16,
+    gap: 10,
+    shadowColor: COLORS.primary,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.4,
+    shadowRadius: 10,
+    elevation: 6,
   },
   aiBtnText: { color: COLORS.white, fontSize: 17, fontWeight: 'bold' },
   aiOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'flex-end' },
   aiSheet: {
-    backgroundColor: COLORS.card, borderTopLeftRadius: 24, borderTopRightRadius: 24,
-    padding: 24, borderTopWidth: 1, borderColor: COLORS.border,
+    backgroundColor: COLORS.card,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    padding: 24,
+    borderTopWidth: 1,
+    borderColor: COLORS.border,
   },
   modalHandle: {
-    width: 40, height: 4, borderRadius: 2, backgroundColor: COLORS.border,
-    alignSelf: 'center', marginBottom: 20,
+    width: 40,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: COLORS.border,
+    alignSelf: 'center',
+    marginBottom: 20,
   },
-  aiTitle: { color: COLORS.white, fontSize: 20, fontWeight: 'bold', textAlign: 'center', marginBottom: 4 },
+  aiTitle: {
+    color: COLORS.white,
+    fontSize: 20,
+    fontWeight: 'bold',
+    textAlign: 'center',
+    marginBottom: 4,
+  },
   aiSubtitle: { color: COLORS.textSecondary, fontSize: 14, textAlign: 'center', marginBottom: 20 },
   emptyText: { color: COLORS.textSecondary, fontSize: 14, marginTop: 10, textAlign: 'center' },
   aiAction: {
-    flexDirection: 'row', alignItems: 'center', gap: 14,
-    backgroundColor: COLORS.cardLight, borderRadius: 14, padding: 16,
-    marginBottom: 10, borderWidth: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+    backgroundColor: COLORS.cardLight,
+    borderRadius: 14,
+    padding: 16,
+    marginBottom: 10,
+    borderWidth: 1,
   },
-  aiActionIcon: { width: 44, height: 44, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
-  aiActionText: { flex: 1, color: COLORS.white, fontSize: 15, fontWeight: '500', textAlign: 'right' },
+  aiActionIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  aiActionText: {
+    flex: 1,
+    color: COLORS.white,
+    fontSize: 15,
+    fontWeight: '500',
+    textAlign: 'right',
+  },
 });

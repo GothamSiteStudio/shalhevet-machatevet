@@ -17,6 +17,7 @@ import CoachScreen from '../screens/CoachScreen';
 import ProgressScreen from '../screens/ProgressScreen';
 import ProfileScreen from '../screens/ProfileScreen';
 import CoachDashboardScreen from '../screens/CoachDashboardScreen';
+import FoodDiaryScreen from '../screens/FoodDiaryScreen';
 
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -118,6 +119,7 @@ export default function AppNavigator() {
         <>
           <Stack.Screen name="Main" component={MainTabs} />
           <Stack.Screen name="Progress" component={ProgressScreen} />
+          <Stack.Screen name="FoodDiary" component={FoodDiaryScreen} />
         </>
       )}
     </Stack.Navigator>
