@@ -447,6 +447,26 @@ export default function NutritionScreen({ navigation }) {
           </View>
         </TouchableOpacity>
 
+        {/* Recipe Catalog Button */}
+        <TouchableOpacity
+          style={styles.recipeBtn}
+          onPress={() => navigation.navigate('RecipeCatalog')}
+          activeOpacity={0.85}
+        >
+          <View style={styles.diaryBtnContent}>
+            <Ionicons name="chevron-back" size={18} color={COLORS.textSecondary} />
+            <View style={styles.diaryBtnTextWrap}>
+              <Text style={styles.diaryBtnTitle}>ספר מתכונים</Text>
+              <Text style={styles.diaryBtnSubtitle}>
+                מתכונים בריאים וטעימים · ארוחות בוקר, עיקריות ונשנושים
+              </Text>
+            </View>
+            <View style={styles.recipeBtnIcon}>
+              <MaterialCommunityIcons name="book-open-page-variant" size={24} color="#FF8A65" />
+            </View>
+          </View>
+        </TouchableOpacity>
+
         {/* Water Slider */}
         <View style={styles.waterCard}>
           <View style={styles.waterHeader}>
@@ -541,6 +561,22 @@ const styles = StyleSheet.create({
   diaryBtnTextWrap: { flex: 1, alignItems: 'flex-end' },
   diaryBtnTitle: { color: COLORS.white, fontSize: 17, fontWeight: '700' },
   diaryBtnSubtitle: { color: COLORS.textSecondary, fontSize: 12, marginTop: 3, textAlign: 'right' },
+  recipeBtn: {
+    backgroundColor: COLORS.card,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#FF8A6544',
+    marginBottom: 14,
+    overflow: 'hidden',
+  },
+  recipeBtnIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: 14,
+    backgroundColor: '#FF8A6518',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   pageTitle: {
     color: COLORS.white,
     fontSize: 22,

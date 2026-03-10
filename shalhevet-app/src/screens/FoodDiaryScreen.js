@@ -3,7 +3,9 @@ import {
   Alert,
   FlatList,
   Image,
+  KeyboardAvoidingView,
   Modal,
+  Platform,
   ScrollView,
   StyleSheet,
   Text,
@@ -112,7 +114,10 @@ function AddFoodModal({ visible, onClose, onAdd, mealType }) {
 
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={resetAndClose}>
-      <View style={styles.modalOverlay}>
+      <KeyboardAvoidingView
+        style={styles.modalOverlay}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      >
         <View style={styles.modalContent}>
           <View style={styles.modalHandle} />
 
@@ -263,7 +268,7 @@ function AddFoodModal({ visible, onClose, onAdd, mealType }) {
             </>
           ) : (
             /* Custom Entry Mode */
-            <ScrollView style={styles.customForm} showsVerticalScrollIndicator={false}>
+            <ScrollView style={styles.customForm} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
               <TextInput
                 style={styles.customInput}
                 placeholder="שם המאכל *"
@@ -317,7 +322,7 @@ function AddFoodModal({ visible, onClose, onAdd, mealType }) {
             </ScrollView>
           )}
         </View>
-      </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }
