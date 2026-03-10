@@ -22,6 +22,8 @@ import {
   Alert,
   ActivityIndicator,
   RefreshControl,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -112,7 +114,10 @@ function AddClientModal({ visible, onClose, onAdded }) {
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <View style={styles.modalOverlay}>
+      <KeyboardAvoidingView
+        style={styles.modalOverlay}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      >
         <View style={styles.modalSheet}>
           <View style={styles.modalHandle} />
           <Text style={styles.modalTitle}>הוספת לקוחה חדשה</Text>
@@ -171,7 +176,7 @@ function AddClientModal({ visible, onClose, onAdded }) {
             </TouchableOpacity>
           </View>
         </View>
-      </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }
@@ -281,6 +286,8 @@ export default function CoachDashboardScreen() {
 
       <ScrollView
         showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
@@ -620,6 +627,8 @@ const styles = StyleSheet.create({
     borderTopRightRadius: 24,
     borderTopWidth: 1,
     padding: 24,
+    flexShrink: 1,
+    maxHeight: '88%',
   },
   modalSub: { color: COLORS.textSecondary, fontSize: 13, marginBottom: 20, textAlign: 'center' },
   modalTitle: {

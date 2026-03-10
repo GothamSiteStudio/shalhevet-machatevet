@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet,
-  ScrollView, Modal, TextInput, Alert, Linking,
+  ScrollView, Modal, TextInput, Alert, Linking, KeyboardAvoidingView, Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons, MaterialCommunityIcons, FontAwesome5 } from '@expo/vector-icons';
@@ -32,7 +32,10 @@ function MeetingRequestModal({ visible, onClose }) {
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <View style={styles.modalOverlay}>
+      <KeyboardAvoidingView
+        style={styles.modalOverlay}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      >
         <View style={styles.modalSheet}>
           <View style={styles.modalHandle} />
           <Text style={styles.modalTitle}>בקשת פגישה</Text>
@@ -67,7 +70,7 @@ function MeetingRequestModal({ visible, onClose }) {
             </TouchableOpacity>
           </View>
         </View>
-      </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }
@@ -86,7 +89,10 @@ function UpdateFormModal({ visible, onClose }) {
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <View style={styles.modalOverlay}>
+      <KeyboardAvoidingView
+        style={styles.modalOverlay}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      >
         <View style={styles.modalSheet}>
           <View style={styles.modalHandle} />
           <Text style={styles.modalTitle}>שלחי עדכון שבועי</Text>
@@ -111,7 +117,7 @@ function UpdateFormModal({ visible, onClose }) {
             </TouchableOpacity>
           </View>
         </View>
-      </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }
@@ -289,7 +295,10 @@ export default function CoachScreen() {
 
       {/* AI Chat Modal */}
       <Modal visible={showAIChat} transparent animationType="slide" onRequestClose={() => setShowAIChat(false)}>
-        <View style={styles.chatModal}>
+        <KeyboardAvoidingView
+          style={styles.chatModal}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        >
           <SafeAreaView style={{ flex: 1 }}>
             <View style={styles.chatHeader}>
               <TouchableOpacity onPress={() => setShowAIChat(false)} style={styles.chatClose}>
@@ -298,7 +307,12 @@ export default function CoachScreen() {
               <Text style={styles.chatTitle}>צ׳אט AI 24/7</Text>
               <MaterialCommunityIcons name="robot" size={24} color={COLORS.primary} />
             </View>
-            <ScrollView style={styles.chatMessages} contentContainerStyle={{ padding: 16, gap: 10 }}>
+            <ScrollView
+              style={styles.chatMessages}
+              contentContainerStyle={{ padding: 16, gap: 10 }}
+              keyboardShouldPersistTaps="handled"
+              keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
+            >
               {aiMessages.map((msg, i) => (
                 <View key={i} style={[styles.chatBubble, msg.from === 'user' ? styles.userBubble : styles.aiBubble]}>
                   <Text style={[styles.chatBubbleText, msg.from === 'user' && styles.userBubbleText]}>
@@ -321,7 +335,7 @@ export default function CoachScreen() {
               />
             </View>
           </SafeAreaView>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
     </SafeAreaView>
   );
@@ -396,7 +410,7 @@ const styles = StyleSheet.create({
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'flex-end' },
   modalSheet: {
     backgroundColor: COLORS.card, borderTopLeftRadius: 24, borderTopRightRadius: 24,
-    padding: 24, borderTopWidth: 1, borderColor: COLORS.border,
+    padding: 24, borderTopWidth: 1, borderColor: COLORS.border, flexShrink: 1, maxHeight: '88%',
   },
   modalHandle: {
     width: 40, height: 4, borderRadius: 2, backgroundColor: COLORS.border,

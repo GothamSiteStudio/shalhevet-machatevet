@@ -3,7 +3,9 @@ import {
   ActivityIndicator,
   Alert,
   Image,
+  KeyboardAvoidingView,
   Modal,
+  Platform,
   ScrollView,
   StyleSheet,
   Text,
@@ -1577,7 +1579,10 @@ export default function CoachClientPlansModal({ visible, clientId, onClose, onSa
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <View style={styles.modalOverlay}>
+      <KeyboardAvoidingView
+        style={styles.modalOverlay}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      >
         <View style={styles.editorSheet}>
           <View style={styles.modalHandle} />
 
@@ -1666,6 +1671,8 @@ export default function CoachClientPlansModal({ visible, clientId, onClose, onSa
                 style={styles.contentScroll}
                 contentContainerStyle={styles.contentContainer}
                 showsVerticalScrollIndicator={false}
+                keyboardShouldPersistTaps="handled"
+                keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
               >
                 {activeTab === 'account' ? renderAccountTab() : null}
                 {activeTab === 'goals' ? renderGoalsTab() : null}
@@ -1688,7 +1695,7 @@ export default function CoachClientPlansModal({ visible, clientId, onClose, onSa
             </>
           )}
         </View>
-      </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }
@@ -1790,10 +1797,11 @@ const styles = StyleSheet.create({
   },
   contentContainer: {
     gap: 12,
-    paddingBottom: 12,
+    paddingBottom: 20,
   },
   contentScroll: {
-    flexGrow: 0,
+    flex: 1,
+    minHeight: 0,
   },
   editorSheet: {
     backgroundColor: COLORS.card,
@@ -1801,7 +1809,9 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: 26,
     borderTopRightRadius: 26,
     borderTopWidth: 1,
+    flexShrink: 1,
     maxHeight: '95%',
+    minHeight: 0,
     paddingBottom: 18,
     paddingHorizontal: 18,
     paddingTop: 14,

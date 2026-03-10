@@ -42,6 +42,7 @@ function MainTabs() {
     <Tab.Navigator
       screenOptions={{
         headerShown: false,
+        tabBarHideOnKeyboard: true,
         tabBarStyle: styles.tabBar,
         tabBarShowLabel: false,
       }}
