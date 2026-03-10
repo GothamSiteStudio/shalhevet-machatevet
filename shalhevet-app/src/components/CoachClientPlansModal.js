@@ -1581,7 +1581,7 @@ export default function CoachClientPlansModal({ visible, clientId, onClose, onSa
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <KeyboardAvoidingView
         style={styles.modalOverlay}
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        behavior={Platform.select({ ios: 'padding', android: 'height' })}
       >
         <View style={styles.editorSheet}>
           <View style={styles.modalHandle} />
@@ -1797,11 +1797,10 @@ const styles = StyleSheet.create({
   },
   contentContainer: {
     gap: 12,
-    paddingBottom: 20,
+    paddingBottom: 12,
   },
   contentScroll: {
-    flex: 1,
-    minHeight: 0,
+    flexGrow: 0,
   },
   editorSheet: {
     backgroundColor: COLORS.card,
@@ -1809,9 +1808,7 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: 26,
     borderTopRightRadius: 26,
     borderTopWidth: 1,
-    flexShrink: 1,
     maxHeight: '95%',
-    minHeight: 0,
     paddingBottom: 18,
     paddingHorizontal: 18,
     paddingTop: 14,

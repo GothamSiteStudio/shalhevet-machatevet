@@ -82,7 +82,7 @@ function EditProfileModal({ visible, onClose }) {
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <KeyboardAvoidingView
         style={styles.modalOverlay}
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        behavior={Platform.select({ ios: 'padding', android: 'height' })}
       >
         <View style={styles.modalSheet}>
           <View style={styles.modalHandle} />
@@ -124,7 +124,7 @@ function ChangePasswordModal({ visible, onClose }) {
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <KeyboardAvoidingView
         style={styles.modalOverlay}
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        behavior={Platform.select({ ios: 'padding', android: 'height' })}
       >
         <View style={styles.modalSheet}>
           <View style={styles.modalHandle} />

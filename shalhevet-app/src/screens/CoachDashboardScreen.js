@@ -116,7 +116,7 @@ function AddClientModal({ visible, onClose, onAdded }) {
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <KeyboardAvoidingView
         style={styles.modalOverlay}
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        behavior={Platform.select({ ios: 'padding', android: 'height' })}
       >
         <View style={styles.modalSheet}>
           <View style={styles.modalHandle} />

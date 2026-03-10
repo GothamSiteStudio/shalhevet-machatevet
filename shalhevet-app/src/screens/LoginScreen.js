@@ -59,7 +59,7 @@ export default function LoginScreen({ navigation }) {
     <SafeAreaView style={styles.safe}>
       <KeyboardAvoidingView
         style={{ flex: 1 }}
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        behavior={Platform.select({ ios: 'padding', android: 'height' })}
       >
         <ScrollView
           contentContainerStyle={styles.container}
