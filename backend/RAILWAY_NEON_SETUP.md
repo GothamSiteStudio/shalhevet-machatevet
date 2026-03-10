@@ -87,8 +87,8 @@ COACH_EMAIL=shalhevet@gmail.com
 COACH_PASSWORD=Shalhevet2024!
 COACH_NAME=שלהבת מחטבת
 COACH_PHONE=0542213199
-CLIENT_URL=http://localhost:3000
-FRONTEND_URL=http://localhost:3000
+CLIENT_URL=
+FRONTEND_URL=
 NGROK_URL=
 ```
 

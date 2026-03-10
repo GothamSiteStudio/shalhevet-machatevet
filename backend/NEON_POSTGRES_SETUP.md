@@ -53,7 +53,7 @@
 פתחי את הקובץ `backend/.env` והוסיפי או עדכני את השורות הבאות:
 
 ```env
-FRONTEND_URL=http://localhost:3000
+FRONTEND_URL=
 NGROK_URL=
 DATABASE_URL=postgresql://USER:PASSWORD@HOST/DATABASE?sslmode=require&channel_binding=require
 PGSSL=true

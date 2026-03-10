@@ -66,11 +66,9 @@ if (rateLimit) {
 
 // ─── CORS - הגדרה בטוחה יותר ──────────────────────────────────────────────
 const ALLOWED_ORIGINS = [
-  "http://localhost:3000", // Next.js web dev
-  "http://localhost:19006", // Expo web dev
   "http://localhost:8081", // Expo metro
   "exp://localhost:8081", // Expo Go
-  FRONTEND_URL, // Production URL (מה-.env)
+  FRONTEND_URL, // Optional browser URL (מה-.env)
   process.env.NGROK_URL, // ngrok URL (מה-.env)
 ].filter(Boolean);
 

@@ -9,7 +9,6 @@
 ```
 שלהבת מחטבת אפליקציה/
 ├── 📱 shalhevet-app/        # React Native / Expo (אפליקציית מובייל)
-├── 🌐 shalhevet-web/        # Next.js 14 (Web App / PWA)
 ├── ⚙️  backend/             # Node.js + Express (API שרת)
 └── .vscode/                 # הגדרות VS Code לכל הצוות
 ```
@@ -33,15 +32,6 @@ npm run dev        # פיתוח עם nodemon
 npm start          # production
 ```
 
-**Web App (Next.js):**
-```bash
-cd shalhevet-web
-npm run dev        # http://localhost:3000
-npm run build      # build לייצור
-npm run lint       # בדיקת קוד
-npm run format     # פורמט קוד עם Prettier
-```
-
 **Mobile App (Expo):**
 ```bash
 cd shalhevet-app
@@ -58,12 +48,11 @@ npm run lint       # בדיקת קוד
 | חלק | טכנולוגיה | גרסה |
 |-----|-----------|-------|
 | Mobile | React Native + Expo | SDK 54 |
-| Web | Next.js + Tailwind CSS | 14 |
 | Backend | Node.js + Express | - |
 | State | Zustand | 4.5 |
 | Auth | JWT + bcryptjs | - |
 | DB | LowDB (JSON file) | 1.0 |
-| Icons | @expo/vector-icons + Lucide | - |
+| Icons | @expo/vector-icons | - |
 
 ---
 
@@ -87,18 +76,6 @@ Border:       #2a2a31
 ---
 
 ## ♿ נגישות (WCAG 2.1)
-
-### Web App:
-- ✅ `lang="he" dir="rtl"` ב-HTML
-- ✅ `userScalable: true` - אפשר zoom
-- ✅ Semantic HTML (`<main>`, `<nav>`, `<header>`, `<section>`)
-- ✅ `aria-label` על כל הכפתורים
-- ✅ `aria-current="page"` בניווט
-- ✅ `aria-hidden="true"` על אייקונים דקורטיביים
-- ✅ `role="status" aria-live="polite"` על מצבים דינמיים
-- ✅ `<dl>/<dt>/<dd>` לנתונים סטטיסטיים
-- ✅ Focus visible styles (`focus-visible:ring-2`)
-- ✅ `<label>` מקושר לכל input
 
 ### Mobile App:
 - ✅ `accessible={true}` + `accessibilityLabel` על כל element אינטרקטיבי
@@ -129,7 +106,7 @@ Border:       #2a2a31
 PORT=5000
 JWT_SECRET=your-super-secret-key-change-me
 NODE_ENV=development
-FRONTEND_URL=http://localhost:3000
+FRONTEND_URL=
 NGROK_URL=                          # הוסיפי כשמשתמשים ב-ngrok
 ```
 
@@ -142,21 +119,11 @@ NGROK_URL=                          # הוסיפי כשמשתמשים ב-ngrok
 | כלי | מטרה |
 |-----|------|
 | **ESLint** | זיהוי שגיאות קוד |
-| **eslint-plugin-jsx-a11y** | נגישות ב-JSX (Web) |
 | **eslint-plugin-react-native** | נגישות ב-React Native |
 | **Prettier** | פורמט קוד אחיד |
-| **@axe-core/react** | נגישות בזמן ריצה (Dev) |
-| **TypeScript** | type safety (Web) |
 
 ### הרצת בדיקות:
 ```bash
-# Web
-cd shalhevet-web
-npm run lint          # בדיקת ESLint
-npm run lint:fix      # תיקון אוטומטי
-npm run format        # פורמט עם Prettier
-npm run type-check    # בדיקת TypeScript
-
 # App
 cd shalhevet-app
 npm run lint          # בדיקת ESLint
@@ -190,12 +157,6 @@ npm run format        # פורמט עם Prettier
 - `CoachScreen` - תקשורת עם מאמנת
 - `CoachDashboardScreen` - דשבורד מאמנת
 
-### Web (Next.js):
-- `/` - דף בית ✅ נגישות מלאה
-- `/diary` - יומן אימונים ✅ נגישות מלאה
-- `/nutrition` - תזונה ✅ נגישות מלאה
-- `/profile` - פרופיל ✅ נגישות מלאה
-
 ---
 
 ## 📂 API Endpoints
@@ -223,10 +184,8 @@ GET    /api/health              בדיקת תקינות שרת
 הפרויקט מגיע עם `.vscode/extensions.json` - VS Code יציע להתקין אוטומטית:
 - **Prettier** - פורמט קוד
 - **ESLint** - בדיקת קוד
-- **Tailwind CSS IntelliSense** - השלמה אוטומטית
 - **Error Lens** - שגיאות ב-inline
 - **GitLens** - ניהול Git
-- **Axe Linter** - נגישות ב-real-time
 - **REST Client** - בדיקת API
 
 ---

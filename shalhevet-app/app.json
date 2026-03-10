@@ -24,9 +24,6 @@
       },
       "package": "com.shalhevet.mehatevet"
     },
-    "web": {
-      "favicon": "./assets/logo.png"
-    },
     "plugins": [
       [
         "expo-image-picker",
