@@ -134,6 +134,13 @@ export const coachAPI = {
 
   // סטטיסטיקות
   getStats: () => apiRequest('GET', '/coach/stats'),
+
+  // מאגר ארוחות של המאמנת
+  getMeals: () => apiRequest('GET', '/coach/meals'),
+  getMeal: id => apiRequest('GET', `/coach/meals/${id}`),
+  createMeal: data => apiRequest('POST', '/coach/meals', data),
+  updateMeal: (id, data) => apiRequest('PUT', `/coach/meals/${id}`, data),
+  deleteMeal: id => apiRequest('DELETE', `/coach/meals/${id}`),
 };
 
 // ─── שמירת/מחיקת טוקן ───────────────────────────────────────────────────────

@@ -181,11 +181,287 @@ function AddClientModal({ visible, onClose, onAdded }) {
   );
 }
 
+// ─── קטגוריות ארוחות ─────────────────────────────────────────────────────────
+const MEAL_CATEGORIES = [
+  'ארוחת בוקר',
+  'ארוחת ביניים',
+  'ארוחת צהריים',
+  'ארוחת ערב',
+  'נשנוש',
+  'מתוק',
+  'כללי',
+];
+
+// ─── מודל עריכת ארוחה למאגר ─────────────────────────────────────────────────
+function CoachMealEditorModal({ visible, onClose, onSaved, editMeal }) {
+  const isEditing = !!editMeal;
+  const [title, setTitle] = useState('');
+  const [category, setCategory] = useState('כללי');
+  const [description, setDescription] = useState('');
+  const [portion, setPortion] = useState('');
+  const [calories, setCalories] = useState('');
+  const [protein, setProtein] = useState('');
+  const [carbs, setCarbs] = useState('');
+  const [fat, setFat] = useState('');
+  const [ingredients, setIngredients] = useState('');
+  const [instructions, setInstructions] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (visible && editMeal) {
+      setTitle(editMeal.title || '');
+      setCategory(editMeal.category || 'כללי');
+      setDescription(editMeal.description || '');
+      setPortion(editMeal.portion || '');
+      setCalories(editMeal.calories != null ? String(editMeal.calories) : '');
+      setProtein(editMeal.protein != null ? String(editMeal.protein) : '');
+      setCarbs(editMeal.carbs != null ? String(editMeal.carbs) : '');
+      setFat(editMeal.fat != null ? String(editMeal.fat) : '');
+      setIngredients(Array.isArray(editMeal.ingredients) ? editMeal.ingredients.join('\n') : '');
+      setInstructions(Array.isArray(editMeal.instructions) ? editMeal.instructions.join('\n') : '');
+    } else if (visible) {
+      setTitle('');
+      setCategory('כללי');
+      setDescription('');
+      setPortion('');
+      setCalories('');
+      setProtein('');
+      setCarbs('');
+      setFat('');
+      setIngredients('');
+      setInstructions('');
+    }
+  }, [visible, editMeal]);
+
+  const handleSave = async () => {
+    if (!title.trim()) {
+      Alert.alert('שגיאה', 'שם הארוחה הוא שדה חובה');
+      return;
+    }
+    setLoading(true);
+    try {
+      const data = {
+        title: title.trim(),
+        category,
+        description: description.trim(),
+        portion: portion.trim(),
+        calories: calories ? Number(calories) : null,
+        protein: protein ? Number(protein) : null,
+        carbs: carbs ? Number(carbs) : null,
+        fat: fat ? Number(fat) : null,
+        ingredients: ingredients.trim() ? ingredients.trim().split('\n').filter(Boolean) : [],
+        instructions: instructions.trim() ? instructions.trim().split('\n').filter(Boolean) : [],
+        items: [
+          {
+            id: `item-${Date.now()}`,
+            name: title.trim(),
+            amount: portion.trim() || '',
+            imageUrl: '',
+            calories: calories ? Number(calories) : 0,
+            protein: protein ? Number(protein) : 0,
+            carbs: carbs ? Number(carbs) : 0,
+            fat: fat ? Number(fat) : 0,
+            notes: description.trim(),
+          },
+        ],
+      };
+
+      if (isEditing) {
+        await coachAPI.updateMeal(editMeal.id, data);
+        Alert.alert('✅ עודכן', `${data.title} עודכנה במאגר`);
+      } else {
+        await coachAPI.createMeal(data);
+        Alert.alert('✅ נוסף', `${data.title} נוספה למאגר`);
+      }
+      onSaved();
+      onClose();
+    } catch (err) {
+      Alert.alert('שגיאה', err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+      <KeyboardAvoidingView
+        style={styles.modalOverlay}
+        behavior={Platform.select({ ios: 'padding', android: 'height' })}
+      >
+        <View style={[styles.modalSheet, { maxHeight: '92%' }]}>
+          <View style={styles.modalHandle} />
+          <Text style={styles.modalTitle}>{isEditing ? 'עריכת ארוחה' : 'ארוחה חדשה למאגר'}</Text>
+          <Text style={styles.modalSub}>הארוחה תישמר במאגר ותוכלי להוסיף אותה ללקוחות</Text>
+
+          <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+            <View style={{ marginBottom: 12 }}>
+              <Text style={styles.fieldLabel}>שם הארוחה *</Text>
+              <TextInput
+                style={styles.input}
+                value={title}
+                onChangeText={setTitle}
+                placeholder="לדוגמה: סלט קינואה עם ירקות צלויים"
+                placeholderTextColor={COLORS.textMuted}
+                textAlign="right"
+              />
+            </View>
+
+            <View style={{ marginBottom: 12 }}>
+              <Text style={styles.fieldLabel}>קטגוריה</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 4 }}>
+                <View style={{ flexDirection: 'row-reverse', gap: 6 }}>
+                  {MEAL_CATEGORIES.map(cat => (
+                    <TouchableOpacity
+                      key={cat}
+                      onPress={() => setCategory(cat)}
+                      style={[
+                        styles.catChip,
+                        category === cat && styles.catChipActive,
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          styles.catChipText,
+                          category === cat && styles.catChipTextActive,
+                        ]}
+                      >
+                        {cat}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </ScrollView>
+            </View>
+
+            <View style={{ marginBottom: 12 }}>
+              <Text style={styles.fieldLabel}>תיאור</Text>
+              <TextInput
+                style={[styles.input, { minHeight: 60 }]}
+                value={description}
+                onChangeText={setDescription}
+                placeholder="תיאור קצר של הארוחה"
+                placeholderTextColor={COLORS.textMuted}
+                textAlign="right"
+                multiline
+              />
+            </View>
+
+            <View style={{ marginBottom: 12 }}>
+              <Text style={styles.fieldLabel}>גודל מנה</Text>
+              <TextInput
+                style={styles.input}
+                value={portion}
+                onChangeText={setPortion}
+                placeholder="100 גרם / כוס / יחידה"
+                placeholderTextColor={COLORS.textMuted}
+                textAlign="right"
+              />
+            </View>
+
+            <View style={{ flexDirection: 'row', gap: 8, marginBottom: 12 }}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.fieldLabel}>קלוריות</Text>
+                <TextInput
+                  style={styles.input}
+                  value={calories}
+                  onChangeText={setCalories}
+                  placeholder="350"
+                  placeholderTextColor={COLORS.textMuted}
+                  keyboardType="numeric"
+                  textAlign="right"
+                />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.fieldLabel}>חלבון (ג׳)</Text>
+                <TextInput
+                  style={styles.input}
+                  value={protein}
+                  onChangeText={setProtein}
+                  placeholder="25"
+                  placeholderTextColor={COLORS.textMuted}
+                  keyboardType="numeric"
+                  textAlign="right"
+                />
+              </View>
+            </View>
+
+            <View style={{ flexDirection: 'row', gap: 8, marginBottom: 12 }}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.fieldLabel}>פחמימות (ג׳)</Text>
+                <TextInput
+                  style={styles.input}
+                  value={carbs}
+                  onChangeText={setCarbs}
+                  placeholder="40"
+                  placeholderTextColor={COLORS.textMuted}
+                  keyboardType="numeric"
+                  textAlign="right"
+                />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.fieldLabel}>שומן (ג׳)</Text>
+                <TextInput
+                  style={styles.input}
+                  value={fat}
+                  onChangeText={setFat}
+                  placeholder="12"
+                  placeholderTextColor={COLORS.textMuted}
+                  keyboardType="numeric"
+                  textAlign="right"
+                />
+              </View>
+            </View>
+
+            <View style={{ marginBottom: 12 }}>
+              <Text style={styles.fieldLabel}>מצרכים (שורה לכל מצרך)</Text>
+              <TextInput
+                style={[styles.input, { minHeight: 80 }]}
+                value={ingredients}
+                onChangeText={setIngredients}
+                placeholder={'כוס קינואה\n2 עגבניות\nכפית שמן זית'}
+                placeholderTextColor={COLORS.textMuted}
+                textAlign="right"
+                multiline
+              />
+            </View>
+
+            <View style={{ marginBottom: 12 }}>
+              <Text style={styles.fieldLabel}>הוראות הכנה (שורה לכל שלב)</Text>
+              <TextInput
+                style={[styles.input, { minHeight: 80 }]}
+                value={instructions}
+                onChangeText={setInstructions}
+                placeholder={'מבשלים את הקינואה\nחותכים ירקות\nמערבבים הכל'}
+                placeholderTextColor={COLORS.textMuted}
+                textAlign="right"
+                multiline
+              />
+            </View>
+          </ScrollView>
+
+          <View style={styles.modalBtns}>
+            <TouchableOpacity style={styles.cancelBtn} onPress={onClose}>
+              <Text style={styles.cancelBtnText}>ביטול</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.submitBtn} onPress={handleSave} disabled={loading}>
+              {loading ? (
+                <ActivityIndicator color={COLORS.white} />
+              ) : (
+                <Text style={styles.submitBtnText}>{isEditing ? 'עדכון' : 'הוספה'}</Text>
+              )}
+            </TouchableOpacity>
+          </View>
+        </View>
+      </KeyboardAvoidingView>
+    </Modal>
+  );
+}
+
 // ─── לוח בקרה ראשי ──────────────────────────────────────────────────────────
 export default function CoachDashboardScreen() {
   const logout = useStore(s => s.logout);
 
-  const [activeTab, setActiveTab] = useState('clients'); // clients | updates | meetings
+  const [activeTab, setActiveTab] = useState('clients'); // clients | updates | meetings | meals
   const [clients, setClients] = useState([]);
   const [updates, setUpdates] = useState([]);
   const [meetings, setMeetings] = useState([]);
@@ -197,18 +473,27 @@ export default function CoachDashboardScreen() {
   const [showClientPlansModal, setShowClientPlansModal] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
 
+  // מאגר ארוחות
+  const [coachMeals, setCoachMeals] = useState([]);
+  const [showMealEditor, setShowMealEditor] = useState(false);
+  const [editingMeal, setEditingMeal] = useState(null);
+  const [mealSearchQuery, setMealSearchQuery] = useState('');
+  const [activeMealCategory, setActiveMealCategory] = useState('הכל');
+
   const loadData = useCallback(async () => {
     try {
-      const [clientsRes, updatesRes, meetingsRes, statsRes] = await Promise.all([
+      const [clientsRes, updatesRes, meetingsRes, statsRes, mealsRes] = await Promise.all([
         coachAPI.getClients(),
         coachAPI.getUpdates(),
         coachAPI.getMeetings(),
         coachAPI.getStats(),
+        coachAPI.getMeals(),
       ]);
       setClients(clientsRes.clients || []);
       setUpdates(updatesRes.updates || []);
       setMeetings(meetingsRes.meetings || []);
       setStats(statsRes.stats || null);
+      setCoachMeals(mealsRes.meals || []);
     } catch (err) {
       Alert.alert('שגיאה בטעינה', err.message);
     } finally {
@@ -249,6 +534,49 @@ export default function CoachDashboardScreen() {
     setShowClientPlansModal(false);
     setSelectedClientId(null);
   };
+
+  const handleDeleteMeal = mealId => {
+    const meal = coachMeals.find(m => m.id === mealId);
+    Alert.alert('מחיקת ארוחה', `למחוק את "${meal?.title}" מהמאגר?`, [
+      { text: 'ביטול' },
+      {
+        text: 'מחיקה',
+        style: 'destructive',
+        onPress: async () => {
+          try {
+            await coachAPI.deleteMeal(mealId);
+            loadData();
+          } catch (err) {
+            Alert.alert('שגיאה', err.message);
+          }
+        },
+      },
+    ]);
+  };
+
+  const openMealEditor = (meal = null) => {
+    setEditingMeal(meal);
+    setShowMealEditor(true);
+  };
+
+  const closeMealEditor = () => {
+    setShowMealEditor(false);
+    setEditingMeal(null);
+  };
+
+  const mealCategoryList = ['הכל', ...new Set(coachMeals.map(m => m.category))];
+
+  const filteredMeals = coachMeals.filter(meal => {
+    const matchesCategory =
+      activeMealCategory === 'הכל' || meal.category === activeMealCategory;
+    const query = mealSearchQuery.trim().toLowerCase();
+    const matchesSearch =
+      !query ||
+      meal.title.toLowerCase().includes(query) ||
+      (meal.description || '').toLowerCase().includes(query) ||
+      (meal.category || '').toLowerCase().includes(query);
+    return matchesCategory && matchesSearch;
+  });
 
   if (loading) {
     return (
@@ -324,6 +652,7 @@ export default function CoachDashboardScreen() {
         <View style={styles.tabs}>
           {[
             { id: 'clients', label: `לקוחות (${clients.length})`, icon: 'people' },
+            { id: 'meals', label: `מאגר (${coachMeals.length})`, icon: 'restaurant' },
             { id: 'updates', label: `עדכונים (${updates.length})`, icon: 'newspaper' },
             { id: 'meetings', label: `פגישות (${meetings.length})`, icon: 'calendar' },
           ].map(tab => (
@@ -379,6 +708,135 @@ export default function CoachDashboardScreen() {
                     client={client}
                     onPress={() => openClientModal(client.id)}
                   />
+                ))
+              )}
+            </>
+          )}
+
+          {/* ─── טאב מאגר ארוחות ─── */}
+          {activeTab === 'meals' && (
+            <>
+              {/* חיפוש */}
+              <View style={styles.searchWrapper}>
+                <Ionicons
+                  name="search-outline"
+                  size={18}
+                  color={COLORS.textMuted}
+                  style={{ marginLeft: 8 }}
+                />
+                <TextInput
+                  style={styles.searchInput}
+                  placeholder="חפשי ארוחה לפי שם או תיאור..."
+                  placeholderTextColor={COLORS.textMuted}
+                  value={mealSearchQuery}
+                  onChangeText={setMealSearchQuery}
+                  textAlign="right"
+                />
+              </View>
+
+              {/* קטגוריות */}
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                style={{ marginBottom: 12 }}
+              >
+                <View style={{ flexDirection: 'row-reverse', gap: 6 }}>
+                  {mealCategoryList.map(cat => (
+                    <TouchableOpacity
+                      key={cat}
+                      onPress={() => setActiveMealCategory(cat)}
+                      style={[
+                        styles.catChip,
+                        activeMealCategory === cat && styles.catChipActive,
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          styles.catChipText,
+                          activeMealCategory === cat && styles.catChipTextActive,
+                        ]}
+                      >
+                        {cat} ({cat === 'הכל' ? coachMeals.length : coachMeals.filter(m => m.category === cat).length})
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </ScrollView>
+
+              {/* כפתור הוספה */}
+              <TouchableOpacity
+                style={styles.addMealBtn}
+                onPress={() => openMealEditor()}
+              >
+                <Text style={styles.addMealBtnText}>הוסיפי ארוחה למאגר</Text>
+                <Ionicons name="add-circle-outline" size={20} color={COLORS.primary} />
+              </TouchableOpacity>
+
+              {filteredMeals.length === 0 ? (
+                <View style={styles.empty}>
+                  <Ionicons name="restaurant-outline" size={48} color={COLORS.textMuted} />
+                  <Text style={styles.emptyTitle}>
+                    {coachMeals.length === 0 ? 'המאגר ריק' : 'אין תוצאות'}
+                  </Text>
+                  <Text style={styles.emptyText}>
+                    {coachMeals.length === 0
+                      ? 'הוסיפי ארוחות ומתכונים שתוכלי לשבץ ללקוחות'
+                      : 'נסי לשנות את החיפוש או הקטגוריה'}
+                  </Text>
+                </View>
+              ) : (
+                filteredMeals.map(meal => (
+                  <View key={meal.id} style={styles.mealCard}>
+                    <View style={styles.mealCardHeader}>
+                      <View style={styles.mealCalPill}>
+                        <Text style={styles.mealCalPillText}>
+                          {meal.calories ? `${meal.calories} קל׳` : '—'}
+                        </Text>
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.mealCardTitle}>{meal.title}</Text>
+                        <Text style={styles.mealCardMeta}>
+                          {meal.category}{meal.portion ? ` · ${meal.portion}` : ''}
+                        </Text>
+                      </View>
+                    </View>
+
+                    {meal.description ? (
+                      <Text style={styles.mealCardDesc} numberOfLines={2}>
+                        {meal.description}
+                      </Text>
+                    ) : null}
+
+                    {/* מאקרו */}
+                    <View style={styles.mealMacros}>
+                      {meal.protein != null && (
+                        <Text style={styles.mealMacroText}>ח׳ {meal.protein}ג׳</Text>
+                      )}
+                      {meal.carbs != null && (
+                        <Text style={styles.mealMacroText}>פ׳ {meal.carbs}ג׳</Text>
+                      )}
+                      {meal.fat != null && (
+                        <Text style={styles.mealMacroText}>ש׳ {meal.fat}ג׳</Text>
+                      )}
+                    </View>
+
+                    <View style={styles.mealCardActions}>
+                      <TouchableOpacity
+                        onPress={() => handleDeleteMeal(meal.id)}
+                        style={styles.mealSecondaryBtn}
+                      >
+                        <Ionicons name="trash-outline" size={16} color="#F44336" />
+                        <Text style={[styles.mealSecondaryBtnText, { color: '#F44336' }]}>מחיקה</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        onPress={() => openMealEditor(meal)}
+                        style={styles.mealPrimaryBtn}
+                      >
+                        <Ionicons name="create-outline" size={16} color={COLORS.white} />
+                        <Text style={styles.mealPrimaryBtnText}>עריכה</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
                 ))
               )}
             </>
@@ -491,6 +949,13 @@ export default function CoachDashboardScreen() {
         clientId={selectedClientId}
         onClose={closeClientModal}
         onSaved={loadData}
+      />
+
+      <CoachMealEditorModal
+        visible={showMealEditor}
+        onClose={closeMealEditor}
+        onSaved={loadData}
+        editMeal={editingMeal}
       />
     </SafeAreaView>
   );
@@ -719,4 +1184,132 @@ const styles = StyleSheet.create({
   updateDate: { color: COLORS.textMuted, fontSize: 12 },
   updateHeader: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 },
   updateText: { color: COLORS.white, fontSize: 14, lineHeight: 20, textAlign: 'right' },
+
+  // ─── סגנונות מאגר ארוחות ───
+  catChip: {
+    backgroundColor: COLORS.card,
+    borderColor: COLORS.border,
+    borderRadius: 16,
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  catChipActive: {
+    backgroundColor: COLORS.primary + '22',
+    borderColor: COLORS.primary,
+  },
+  catChipText: {
+    color: COLORS.textMuted,
+    fontSize: 12,
+    fontWeight: '500',
+  },
+  catChipTextActive: {
+    color: COLORS.primary,
+    fontWeight: '700',
+  },
+  addMealBtn: {
+    alignItems: 'center',
+    backgroundColor: COLORS.primary + '15',
+    borderColor: COLORS.primary + '44',
+    borderRadius: 12,
+    borderStyle: 'dashed',
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: 8,
+    justifyContent: 'center',
+    marginBottom: 14,
+    paddingVertical: 12,
+  },
+  addMealBtnText: {
+    color: COLORS.primary,
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  mealCard: {
+    backgroundColor: COLORS.card,
+    borderColor: COLORS.border,
+    borderRadius: 14,
+    borderWidth: 1,
+    marginBottom: 10,
+    padding: 14,
+  },
+  mealCardHeader: {
+    alignItems: 'flex-start',
+    flexDirection: 'row',
+    gap: 10,
+    marginBottom: 6,
+  },
+  mealCardTitle: {
+    color: COLORS.white,
+    fontSize: 15,
+    fontWeight: '600',
+    textAlign: 'right',
+  },
+  mealCardMeta: {
+    color: COLORS.textMuted,
+    fontSize: 11,
+    marginTop: 2,
+    textAlign: 'right',
+  },
+  mealCardDesc: {
+    color: COLORS.textSecondary,
+    fontSize: 12,
+    lineHeight: 18,
+    marginBottom: 6,
+    textAlign: 'right',
+  },
+  mealCalPill: {
+    backgroundColor: COLORS.primary + '22',
+    borderRadius: 10,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+  },
+  mealCalPillText: {
+    color: COLORS.primary,
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  mealMacros: {
+    flexDirection: 'row-reverse',
+    gap: 12,
+    marginBottom: 8,
+  },
+  mealMacroText: {
+    color: COLORS.textMuted,
+    fontSize: 11,
+  },
+  mealCardActions: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  mealSecondaryBtn: {
+    alignItems: 'center',
+    borderColor: COLORS.border,
+    borderRadius: 10,
+    borderWidth: 1,
+    flex: 1,
+    flexDirection: 'row',
+    gap: 4,
+    justifyContent: 'center',
+    paddingVertical: 8,
+  },
+  mealSecondaryBtnText: {
+    fontSize: 12,
+    fontWeight: '500',
+  },
+  mealPrimaryBtn: {
+    alignItems: 'center',
+    backgroundColor: COLORS.primary,
+    borderRadius: 10,
+    flex: 1,
+    flexDirection: 'row',
+    gap: 4,
+    justifyContent: 'center',
+    paddingVertical: 8,
+  },
+  mealPrimaryBtnText: {
+    color: COLORS.white,
+    fontSize: 12,
+    fontWeight: '600',
+  },
 });

@@ -128,3 +128,26 @@ CREATE TABLE IF NOT EXISTS nutrition_logs (
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+CREATE TABLE IF NOT EXISTS coach_meals (
+  id TEXT PRIMARY KEY,
+  title TEXT NOT NULL,
+  category TEXT NOT NULL DEFAULT 'כללי',
+  description TEXT,
+  image_url TEXT,
+  calories INTEGER,
+  protein NUMERIC,
+  carbs NUMERIC,
+  fat NUMERIC,
+  servings INTEGER DEFAULT 1,
+  portion TEXT,
+  ingredients JSONB NOT NULL DEFAULT '[]'::jsonb,
+  instructions JSONB NOT NULL DEFAULT '[]'::jsonb,
+  items JSONB NOT NULL DEFAULT '[]'::jsonb,
+  created_by TEXT REFERENCES users(id),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_coach_meals_category ON coach_meals(category);
+CREATE INDEX IF NOT EXISTS idx_coach_meals_created_by ON coach_meals(created_by);

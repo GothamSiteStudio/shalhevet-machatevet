@@ -735,6 +735,147 @@ async function addMessage(fromId, toId, text, fromRole) {
   return mapMessage(result.rows[0]);
 }
 
+// ─── Coach Meals (מאגר ארוחות של המאמנת) ────────────────────────────────────
+
+function mapCoachMeal(row) {
+  if (!row) return null;
+
+  return {
+    id: row.id,
+    title: row.title,
+    category: row.category || "כללי",
+    description: row.description || "",
+    imageUrl: row.image_url || "",
+    calories: toIntegerOrNull(row.calories),
+    protein: toNumberOrNull(row.protein),
+    carbs: toNumberOrNull(row.carbs),
+    fat: toNumberOrNull(row.fat),
+    servings: toIntegerOrNull(row.servings) || 1,
+    portion: row.portion || "",
+    ingredients: row.ingredients || [],
+    instructions: row.instructions || [],
+    items: row.items || [],
+    createdBy: row.created_by || null,
+    createdAt: toIsoString(row.created_at),
+    updatedAt: toIsoString(row.updated_at),
+  };
+}
+
+async function getAllCoachMeals() {
+  const result = await query(
+    "SELECT * FROM coach_meals ORDER BY category ASC, title ASC",
+  );
+  return result.rows.map(mapCoachMeal);
+}
+
+async function getCoachMealById(id) {
+  const result = await query(
+    "SELECT * FROM coach_meals WHERE id = $1 LIMIT 1",
+    [id],
+  );
+  return mapCoachMeal(result.rows[0]);
+}
+
+async function createCoachMeal(data) {
+  const result = await query(
+    `
+      INSERT INTO coach_meals (
+        id, title, category, description, image_url,
+        calories, protein, carbs, fat,
+        servings, portion, ingredients, instructions, items,
+        created_by, created_at, updated_at
+      )
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12::jsonb, $13::jsonb, $14::jsonb, $15, NOW(), NOW())
+      RETURNING *
+    `,
+    [
+      createRecordId("coach-meal"),
+      data.title,
+      data.category || "כללי",
+      data.description || "",
+      data.imageUrl || "",
+      toIntegerOrNull(data.calories),
+      toNumberOrNull(data.protein),
+      toNumberOrNull(data.carbs),
+      toNumberOrNull(data.fat),
+      toIntegerOrNull(data.servings) || 1,
+      data.portion || "",
+      JSON.stringify(data.ingredients || []),
+      JSON.stringify(data.instructions || []),
+      JSON.stringify(data.items || []),
+      data.createdBy || null,
+    ],
+  );
+
+  return mapCoachMeal(result.rows[0]);
+}
+
+async function updateCoachMeal(id, data) {
+  const setClauses = [];
+  const values = [];
+
+  const fieldMap = {
+    title: "title",
+    category: "category",
+    description: "description",
+    imageUrl: "image_url",
+    calories: "calories",
+    protein: "protein",
+    carbs: "carbs",
+    fat: "fat",
+    servings: "servings",
+    portion: "portion",
+  };
+
+  Object.entries(fieldMap).forEach(([key, column]) => {
+    if (data[key] !== undefined) {
+      values.push(data[key]);
+      setClauses.push(`${column} = $${values.length}`);
+    }
+  });
+
+  if (data.ingredients !== undefined) {
+    values.push(JSON.stringify(data.ingredients));
+    setClauses.push(`ingredients = $${values.length}::jsonb`);
+  }
+
+  if (data.instructions !== undefined) {
+    values.push(JSON.stringify(data.instructions));
+    setClauses.push(`instructions = $${values.length}::jsonb`);
+  }
+
+  if (data.items !== undefined) {
+    values.push(JSON.stringify(data.items));
+    setClauses.push(`items = $${values.length}::jsonb`);
+  }
+
+  if (setClauses.length === 0) {
+    return getCoachMealById(id);
+  }
+
+  values.push(id);
+
+  const result = await query(
+    `
+      UPDATE coach_meals
+      SET ${setClauses.join(", ")}, updated_at = NOW()
+      WHERE id = $${values.length}
+      RETURNING *
+    `,
+    values,
+  );
+
+  return mapCoachMeal(result.rows[0]);
+}
+
+async function deleteCoachMeal(id) {
+  const result = await query(
+    "DELETE FROM coach_meals WHERE id = $1 RETURNING *",
+    [id],
+  );
+  return mapCoachMeal(result.rows[0]);
+}
+
 module.exports = {
   readDB,
   writeDB,
@@ -762,4 +903,9 @@ module.exports = {
   getMessages,
   getAllMessages,
   addMessage,
+  getAllCoachMeals,
+  getCoachMealById,
+  createCoachMeal,
+  updateCoachMeal,
+  deleteCoachMeal,
 };

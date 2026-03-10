@@ -477,6 +477,11 @@ export default function CoachClientPlansModal({ visible, clientId, onClose, onSa
   const [recipeQuery, setRecipeQuery] = useState('');
   const [activeRecipeCategory, setActiveRecipeCategory] = useState(RECIPE_CATEGORY_ALL);
 
+  // מאגר ארוחות של המאמנת
+  const [coachMeals, setCoachMeals] = useState([]);
+  const [coachMealQuery, setCoachMealQuery] = useState('');
+  const [activeCoachMealCategory, setActiveCoachMealCategory] = useState('הכל');
+
   const resetForms = useCallback(() => {
     setClient(null);
     setAccountForm(createEmptyAccountForm());
@@ -485,6 +490,9 @@ export default function CoachClientPlansModal({ visible, clientId, onClose, onSa
     setWorkoutForm(createEmptyWorkoutForm());
     setRecipeQuery('');
     setActiveRecipeCategory(RECIPE_CATEGORY_ALL);
+    setCoachMeals([]);
+    setCoachMealQuery('');
+    setActiveCoachMealCategory('הכל');
   }, []);
 
   const queryMatchedRecipes = RECIPE_CATALOG.filter(recipe => {
@@ -524,17 +532,35 @@ export default function CoachClientPlansModal({ visible, clientId, onClose, onSa
     return accumulator;
   }, {});
 
+  // סינון מאגר של המאמנת
+  const coachMealCategories = ['הכל', ...new Set(coachMeals.map(m => m.category))];
+
+  const filteredCoachMeals = coachMeals.filter(meal => {
+    const matchesCategory =
+      activeCoachMealCategory === 'הכל' || meal.category === activeCoachMealCategory;
+    const q = coachMealQuery.trim().toLowerCase();
+    const matchesSearch =
+      !q ||
+      meal.title.toLowerCase().includes(q) ||
+      (meal.description || '').toLowerCase().includes(q);
+    return matchesCategory && matchesSearch;
+  });
+
   const loadClient = useCallback(async () => {
     if (!clientId) return;
 
     setLoading(true);
     try {
-      const result = await coachAPI.getClient(clientId);
+      const [result, mealsRes] = await Promise.all([
+        coachAPI.getClient(clientId),
+        coachAPI.getMeals(),
+      ]);
       setClient(result.client || null);
       setAccountForm(mapClientToAccountForm(result.client));
       setGoalsForm(mapGoalsToForm(result.goals));
       setNutritionForm(mapNutritionToForm(result.nutritionPlan));
       setWorkoutForm(mapWorkoutToForm(result.workoutPlan));
+      setCoachMeals(mealsRes.meals || []);
     } catch (err) {
       Alert.alert('שגיאה', err.message || 'לא ניתן לטעון את פרטי הלקוחה');
       onClose();
@@ -640,6 +666,57 @@ export default function CoachClientPlansModal({ visible, clientId, onClose, onSa
     }));
 
     Alert.alert('נוסף לתפריט', `${recipe.title} נוסף כמתכון חדש בתפריט.`);
+  };
+
+  const addCoachMealToNutritionPlan = coachMeal => {
+    const mealItems = Array.isArray(coachMeal.items) && coachMeal.items.length > 0
+      ? coachMeal.items.map(item => ({
+          id: makeId('meal-item'),
+          name: item.name || coachMeal.title,
+          amount: item.amount || coachMeal.portion || '',
+          imageUrl: item.imageUrl || '',
+          calories: String(item.calories || coachMeal.calories || 0),
+          protein: String(item.protein || coachMeal.protein || 0),
+          carbs: String(item.carbs || coachMeal.carbs || 0),
+          fat: String(item.fat || coachMeal.fat || 0),
+          notes: item.notes || '',
+        }))
+      : [
+          {
+            id: makeId('meal-item'),
+            name: coachMeal.title,
+            amount: coachMeal.portion || '',
+            imageUrl: coachMeal.imageUrl || '',
+            calories: String(coachMeal.calories || 0),
+            protein: String(coachMeal.protein || 0),
+            carbs: String(coachMeal.carbs || 0),
+            fat: String(coachMeal.fat || 0),
+            notes: coachMeal.description || '',
+          },
+        ];
+
+    const ingredientNotes = Array.isArray(coachMeal.ingredients) && coachMeal.ingredients.length > 0
+      ? '\n\nמצרכים:\n' + coachMeal.ingredients.map(i => `- ${i}`).join('\n')
+      : '';
+
+    const instructionNotes = Array.isArray(coachMeal.instructions) && coachMeal.instructions.length > 0
+      ? '\n\nהכנה:\n' + coachMeal.instructions.map((s, i) => `${i + 1}. ${s}`).join('\n')
+      : '';
+
+    const meal = {
+      id: makeId('meal'),
+      name: coachMeal.title,
+      time: '',
+      notes: (coachMeal.description || '') + ingredientNotes + instructionNotes,
+      items: mealItems,
+    };
+
+    setNutritionForm(current => ({
+      ...current,
+      meals: [...current.meals, meal],
+    }));
+
+    Alert.alert('נוסף לתפריט', `${coachMeal.title} הוסף מהמאגר שלך לתפריט הלקוחה.`);
   };
 
   const showRecipeImagePrompt = recipe => {
@@ -1067,6 +1144,102 @@ export default function CoachClientPlansModal({ visible, clientId, onClose, onSa
           keyboardType="decimal-pad"
         />
       </SectionCard>
+
+      {/* ─── מאגר ארוחות של המאמנת ─── */}
+      {coachMeals.length > 0 && (
+        <SectionCard
+          title="מאגר הארוחות שלי"
+          subtitle="ארוחות שיצרת במאגר - לחצי להוסיף ללקוחה"
+          icon="heart-outline"
+        >
+          <Field
+            label="חיפוש במאגר"
+            value={coachMealQuery}
+            onChangeText={setCoachMealQuery}
+            placeholder="חפשי לפי שם ארוחה"
+          />
+
+          <View style={styles.recipeCategoryFilters}>
+            {coachMealCategories.map(cat => {
+              const isActive = cat === activeCoachMealCategory;
+              const count =
+                cat === 'הכל'
+                  ? coachMeals.length
+                  : coachMeals.filter(m => m.category === cat).length;
+              return (
+                <TouchableOpacity
+                  key={cat}
+                  onPress={() => setActiveCoachMealCategory(cat)}
+                  style={[styles.recipeCategoryChip, isActive && styles.recipeCategoryChipActive]}
+                >
+                  <Text
+                    style={[
+                      styles.recipeCategoryChipText,
+                      isActive && styles.recipeCategoryChipTextActive,
+                    ]}
+                  >
+                    {cat}
+                  </Text>
+                  <View
+                    style={[
+                      styles.recipeCategoryCount,
+                      isActive && styles.recipeCategoryCountActive,
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.recipeCategoryCountText,
+                        isActive && styles.recipeCategoryCountTextActive,
+                      ]}
+                    >
+                      {count}
+                    </Text>
+                  </View>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+
+          <View style={styles.recipeList}>
+            {filteredCoachMeals.length === 0 ? (
+              <Text style={styles.emptyStateText}>לא נמצאו ארוחות שמתאימות לחיפוש.</Text>
+            ) : (
+              filteredCoachMeals.map(meal => (
+                <View key={meal.id} style={styles.recipeCard}>
+                  <View style={styles.recipeCardHeader}>
+                    <View style={styles.recipeCaloriesPill}>
+                      <Text style={styles.recipeCaloriesPillText}>
+                        {meal.calories ? `${meal.calories} קל׳` : '—'}
+                      </Text>
+                    </View>
+                    <View style={styles.recipeCardTitleWrap}>
+                      <Text style={styles.recipeCardTitle}>{meal.title}</Text>
+                      <Text style={styles.recipeCardMeta}>
+                        {meal.category}{meal.portion ? ` · ${meal.portion}` : ''}
+                        {meal.protein != null ? ` · ח׳${meal.protein}ג׳` : ''}
+                      </Text>
+                    </View>
+                  </View>
+
+                  {meal.description ? (
+                    <Text style={styles.recipeCardSummary}>{meal.description}</Text>
+                  ) : null}
+
+                  <View style={styles.recipeCardActions}>
+                    <TouchableOpacity
+                      onPress={() => addCoachMealToNutritionPlan(meal)}
+                      style={styles.recipePrimaryBtn}
+                    >
+                      <Ionicons name="add-circle-outline" size={16} color={COLORS.white} />
+                      <Text style={styles.recipePrimaryBtnText}>הוסיפי לתפריט</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              ))
+            )}
+          </View>
+        </SectionCard>
+      )}
 
       <SectionCard
         title="ספריית מתכונים מוכנים"

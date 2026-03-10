@@ -11,6 +11,11 @@
  * GET  /api/coach/messages        - כל ההודעות
  * POST /api/coach/messages/:userId - שלח הודעה ללקוחה
  * GET  /api/coach/stats           - סטטיסטיקות כלליות
+ * GET  /api/coach/meals           - מאגר ארוחות של המאמנת
+ * GET  /api/coach/meals/:id       - ארוחה ספציפית מהמאגר
+ * POST /api/coach/meals           - הוספת ארוחה למאגר
+ * PUT  /api/coach/meals/:id       - עדכון ארוחה במאגר
+ * DELETE /api/coach/meals/:id     - מחיקת ארוחה מהמאגר
  */
 
 const express = require("express");
@@ -38,6 +43,11 @@ const {
   updateMeetingStatus,
   getAllMessages,
   addMessage,
+  getAllCoachMeals,
+  getCoachMealById,
+  createCoachMeal,
+  updateCoachMeal,
+  deleteCoachMeal,
 } = require("../utils/db");
 const { authenticate, requireCoach } = require("../middleware/auth");
 
@@ -817,5 +827,110 @@ router.get(
     });
   }),
 );
+
+// ─── GET /api/coach/meals - מאגר ארוחות ─────────────────────────────────────
+router.get(
+  "/meals",
+  asyncHandler(async (req, res) => {
+    const meals = await getAllCoachMeals();
+    res.json({ success: true, count: meals.length, meals });
+  }),
+);
+
+// ─── GET /api/coach/meals/:id - ארוחה ספציפית ────────────────────────────────
+router.get(
+  "/meals/:id",
+  asyncHandler(async (req, res) => {
+    const meal = await getCoachMealById(req.params.id);
+    if (!meal) {
+      return res.status(404).json({ error: "ארוחה לא נמצאה" });
+    }
+    res.json({ success: true, meal });
+  }),
+);
+
+// ─── POST /api/coach/meals - הוספת ארוחה למאגר ──────────────────────────────
+router.post("/meals", async (req, res) => {
+  try {
+    const { title, category, description, imageUrl, calories, protein, carbs, fat, servings, portion, ingredients, instructions, items } = req.body;
+
+    if (!title || !String(title).trim()) {
+      return res.status(400).json({ error: "שם הארוחה הוא שדה חובה" });
+    }
+
+    const meal = await createCoachMeal({
+      title: String(title).trim(),
+      category: parseOptionalText(category) || "כללי",
+      description: parseOptionalText(description) || "",
+      imageUrl: imageUrl ? parseOptionalHttpUrl(imageUrl, "imageUrl") : "",
+      calories: parseOptionalNumber(calories, "calories") ?? null,
+      protein: parseOptionalNumber(protein, "protein") ?? null,
+      carbs: parseOptionalNumber(carbs, "carbs") ?? null,
+      fat: parseOptionalNumber(fat, "fat") ?? null,
+      servings: parseOptionalNumber(servings, "servings") ?? 1,
+      portion: parseOptionalText(portion) || "",
+      ingredients: Array.isArray(ingredients) ? ingredients : [],
+      instructions: Array.isArray(instructions) ? instructions : [],
+      items: Array.isArray(items) ? items : [],
+      createdBy: req.user.id,
+    });
+
+    console.log(`✅ מאמנת הוסיפה ארוחה למאגר: ${meal.title}`);
+    res.status(201).json({ success: true, message: `${meal.title} נוספה למאגר! ✅`, meal });
+  } catch (err) {
+    res.status(err.status || 500).json({ error: err.message || "שגיאה בהוספת ארוחה" });
+  }
+});
+
+// ─── PUT /api/coach/meals/:id - עדכון ארוחה במאגר ───────────────────────────
+router.put("/meals/:id", async (req, res) => {
+  try {
+    const existing = await getCoachMealById(req.params.id);
+    if (!existing) {
+      return res.status(404).json({ error: "ארוחה לא נמצאה" });
+    }
+
+    const { title, category, description, imageUrl, calories, protein, carbs, fat, servings, portion, ingredients, instructions, items } = req.body;
+
+    const updates = {};
+    if (title !== undefined) {
+      const trimmedTitle = String(title).trim();
+      if (!trimmedTitle) {
+        return res.status(400).json({ error: "שם הארוחה לא יכול להיות ריק" });
+      }
+      updates.title = trimmedTitle;
+    }
+    if (category !== undefined) updates.category = parseOptionalText(category) || "כללי";
+    if (description !== undefined) updates.description = parseOptionalText(description) || "";
+    if (imageUrl !== undefined) updates.imageUrl = imageUrl ? parseOptionalHttpUrl(imageUrl, "imageUrl") : "";
+    if (calories !== undefined) updates.calories = parseOptionalNumber(calories, "calories") ?? null;
+    if (protein !== undefined) updates.protein = parseOptionalNumber(protein, "protein") ?? null;
+    if (carbs !== undefined) updates.carbs = parseOptionalNumber(carbs, "carbs") ?? null;
+    if (fat !== undefined) updates.fat = parseOptionalNumber(fat, "fat") ?? null;
+    if (servings !== undefined) updates.servings = parseOptionalNumber(servings, "servings") ?? 1;
+    if (portion !== undefined) updates.portion = parseOptionalText(portion) || "";
+    if (ingredients !== undefined) updates.ingredients = Array.isArray(ingredients) ? ingredients : [];
+    if (instructions !== undefined) updates.instructions = Array.isArray(instructions) ? instructions : [];
+    if (items !== undefined) updates.items = Array.isArray(items) ? items : [];
+
+    const meal = await updateCoachMeal(req.params.id, updates);
+    res.json({ success: true, message: `${meal.title} עודכנה ✅`, meal });
+  } catch (err) {
+    res.status(err.status || 500).json({ error: err.message || "שגיאה בעדכון ארוחה" });
+  }
+});
+
+// ─── DELETE /api/coach/meals/:id - מחיקת ארוחה מהמאגר ───────────────────────
+router.delete("/meals/:id", async (req, res) => {
+  try {
+    const meal = await deleteCoachMeal(req.params.id);
+    if (!meal) {
+      return res.status(404).json({ error: "ארוחה לא נמצאה" });
+    }
+    res.json({ success: true, message: `${meal.title} נמחקה מהמאגר ✅` });
+  } catch (err) {
+    res.status(500).json({ error: "שגיאה במחיקת ארוחה" });
+  }
+});
 
 module.exports = router;
