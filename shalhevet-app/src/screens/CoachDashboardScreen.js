@@ -29,6 +29,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../theme/colors';
 import { coachAPI } from '../services/api';
+import { CATALOG_MEAL_SOURCE, mergeRecipeCatalogWithCoachMeals } from '../data/recipeCatalog';
 import CoachClientPlansModal from '../components/CoachClientPlansModal';
 import useStore from '../store/useStore';
 
@@ -308,22 +309,20 @@ function CoachMealEditorModal({ visible, onClose, onSaved, editMeal }) {
 
             <View style={{ marginBottom: 12 }}>
               <Text style={styles.fieldLabel}>קטגוריה</Text>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 4 }}>
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                style={{ marginBottom: 4 }}
+              >
                 <View style={{ flexDirection: 'row-reverse', gap: 6 }}>
                   {MEAL_CATEGORIES.map(cat => (
                     <TouchableOpacity
                       key={cat}
                       onPress={() => setCategory(cat)}
-                      style={[
-                        styles.catChip,
-                        category === cat && styles.catChipActive,
-                      ]}
+                      style={[styles.catChip, category === cat && styles.catChipActive]}
                     >
                       <Text
-                        style={[
-                          styles.catChipText,
-                          category === cat && styles.catChipTextActive,
-                        ]}
+                        style={[styles.catChipText, category === cat && styles.catChipTextActive]}
                       >
                         {cat}
                       </Text>
@@ -570,11 +569,12 @@ export default function CoachDashboardScreen() {
     setEditingMeal(null);
   };
 
-  const mealCategoryList = ['הכל', ...new Set(coachMeals.map(m => m.category))];
+  const mealLibrary = mergeRecipeCatalogWithCoachMeals(coachMeals);
 
-  const filteredMeals = coachMeals.filter(meal => {
-    const matchesCategory =
-      activeMealCategory === 'הכל' || meal.category === activeMealCategory;
+  const mealCategoryList = ['הכל', ...new Set(mealLibrary.map(m => m.category).filter(Boolean))];
+
+  const filteredMeals = mealLibrary.filter(meal => {
+    const matchesCategory = activeMealCategory === 'הכל' || meal.category === activeMealCategory;
     const query = mealSearchQuery.trim().toLowerCase();
     const matchesSearch =
       !query ||
@@ -658,7 +658,7 @@ export default function CoachDashboardScreen() {
         <View style={styles.tabs}>
           {[
             { id: 'clients', label: `לקוחות (${clients.length})`, icon: 'people' },
-            { id: 'meals', label: `מאגר (${coachMeals.length})`, icon: 'restaurant' },
+            { id: 'meals', label: `מאגר (${mealLibrary.length})`, icon: 'restaurant' },
             { id: 'updates', label: `עדכונים (${updates.length})`, icon: 'newspaper' },
             { id: 'meetings', label: `פגישות (${meetings.length})`, icon: 'calendar' },
           ].map(tab => (
@@ -751,10 +751,7 @@ export default function CoachDashboardScreen() {
                     <TouchableOpacity
                       key={cat}
                       onPress={() => setActiveMealCategory(cat)}
-                      style={[
-                        styles.catChip,
-                        activeMealCategory === cat && styles.catChipActive,
-                      ]}
+                      style={[styles.catChip, activeMealCategory === cat && styles.catChipActive]}
                     >
                       <Text
                         style={[
@@ -762,7 +759,11 @@ export default function CoachDashboardScreen() {
                           activeMealCategory === cat && styles.catChipTextActive,
                         ]}
                       >
-                        {cat} ({cat === 'הכל' ? coachMeals.length : coachMeals.filter(m => m.category === cat).length})
+                        {cat} (
+                        {cat === 'הכל'
+                          ? mealLibrary.length
+                          : mealLibrary.filter(m => m.category === cat).length}
+                        )
                       </Text>
                     </TouchableOpacity>
                   ))}
@@ -770,10 +771,7 @@ export default function CoachDashboardScreen() {
               </ScrollView>
 
               {/* כפתור הוספה */}
-              <TouchableOpacity
-                style={styles.addMealBtn}
-                onPress={() => openMealEditor()}
-              >
+              <TouchableOpacity style={styles.addMealBtn} onPress={() => openMealEditor()}>
                 <Text style={styles.addMealBtnText}>הוסיפי ארוחה למאגר</Text>
                 <Ionicons name="add-circle-outline" size={20} color={COLORS.primary} />
               </TouchableOpacity>
@@ -782,68 +780,82 @@ export default function CoachDashboardScreen() {
                 <View style={styles.empty}>
                   <Ionicons name="restaurant-outline" size={48} color={COLORS.textMuted} />
                   <Text style={styles.emptyTitle}>
-                    {coachMeals.length === 0 ? 'המאגר ריק' : 'אין תוצאות'}
+                    {mealLibrary.length === 0 ? 'המאגר ריק' : 'אין תוצאות'}
                   </Text>
                   <Text style={styles.emptyText}>
-                    {coachMeals.length === 0
+                    {mealLibrary.length === 0
                       ? 'הוסיפי ארוחות ומתכונים שתוכלי לשבץ ללקוחות'
                       : 'נסי לשנות את החיפוש או הקטגוריה'}
                   </Text>
                 </View>
               ) : (
-                filteredMeals.map(meal => (
-                  <View key={meal.id} style={styles.mealCard}>
-                    <View style={styles.mealCardHeader}>
-                      <View style={styles.mealCalPill}>
-                        <Text style={styles.mealCalPillText}>
-                          {meal.calories ? `${meal.calories} קל׳` : '—'}
-                        </Text>
+                filteredMeals.map(meal => {
+                  const isCatalogMeal = meal.source === CATALOG_MEAL_SOURCE;
+
+                  return (
+                    <View key={meal.id} style={styles.mealCard}>
+                      <View style={styles.mealCardHeader}>
+                        <View style={styles.mealCalPill}>
+                          <Text style={styles.mealCalPillText}>
+                            {meal.calories ? `${meal.calories} קל׳` : '—'}
+                          </Text>
+                        </View>
+                        <View style={{ flex: 1 }}>
+                          <Text style={styles.mealCardTitle}>{meal.title}</Text>
+                          <Text style={styles.mealCardMeta}>
+                            {meal.category}
+                            {meal.portion ? ` · ${meal.portion}` : ''}
+                          </Text>
+                        </View>
                       </View>
-                      <View style={{ flex: 1 }}>
-                        <Text style={styles.mealCardTitle}>{meal.title}</Text>
-                        <Text style={styles.mealCardMeta}>
-                          {meal.category}{meal.portion ? ` · ${meal.portion}` : ''}
+
+                      {meal.description ? (
+                        <Text style={styles.mealCardDesc} numberOfLines={2}>
+                          {meal.description}
                         </Text>
+                      ) : null}
+
+                      {/* מאקרו */}
+                      <View style={styles.mealMacros}>
+                        {meal.protein != null && (
+                          <Text style={styles.mealMacroText}>ח׳ {meal.protein}ג׳</Text>
+                        )}
+                        {meal.carbs != null && (
+                          <Text style={styles.mealMacroText}>פ׳ {meal.carbs}ג׳</Text>
+                        )}
+                        {meal.fat != null && (
+                          <Text style={styles.mealMacroText}>ש׳ {meal.fat}ג׳</Text>
+                        )}
                       </View>
-                    </View>
 
-                    {meal.description ? (
-                      <Text style={styles.mealCardDesc} numberOfLines={2}>
-                        {meal.description}
-                      </Text>
-                    ) : null}
-
-                    {/* מאקרו */}
-                    <View style={styles.mealMacros}>
-                      {meal.protein != null && (
-                        <Text style={styles.mealMacroText}>ח׳ {meal.protein}ג׳</Text>
-                      )}
-                      {meal.carbs != null && (
-                        <Text style={styles.mealMacroText}>פ׳ {meal.carbs}ג׳</Text>
-                      )}
-                      {meal.fat != null && (
-                        <Text style={styles.mealMacroText}>ש׳ {meal.fat}ג׳</Text>
+                      {isCatalogMeal ? (
+                        <View style={styles.builtInMealBadge}>
+                          <Ionicons name="book-outline" size={16} color={COLORS.primary} />
+                          <Text style={styles.builtInMealBadgeText}>מתכון מובנה מהספרייה</Text>
+                        </View>
+                      ) : (
+                        <View style={styles.mealCardActions}>
+                          <TouchableOpacity
+                            onPress={() => handleDeleteMeal(meal.id)}
+                            style={styles.mealSecondaryBtn}
+                          >
+                            <Ionicons name="trash-outline" size={16} color="#F44336" />
+                            <Text style={[styles.mealSecondaryBtnText, { color: '#F44336' }]}>
+                              מחיקה
+                            </Text>
+                          </TouchableOpacity>
+                          <TouchableOpacity
+                            onPress={() => openMealEditor(meal)}
+                            style={styles.mealPrimaryBtn}
+                          >
+                            <Ionicons name="create-outline" size={16} color={COLORS.white} />
+                            <Text style={styles.mealPrimaryBtnText}>עריכה</Text>
+                          </TouchableOpacity>
+                        </View>
                       )}
                     </View>
-
-                    <View style={styles.mealCardActions}>
-                      <TouchableOpacity
-                        onPress={() => handleDeleteMeal(meal.id)}
-                        style={styles.mealSecondaryBtn}
-                      >
-                        <Ionicons name="trash-outline" size={16} color="#F44336" />
-                        <Text style={[styles.mealSecondaryBtnText, { color: '#F44336' }]}>מחיקה</Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity
-                        onPress={() => openMealEditor(meal)}
-                        style={styles.mealPrimaryBtn}
-                      >
-                        <Ionicons name="create-outline" size={16} color={COLORS.white} />
-                        <Text style={styles.mealPrimaryBtnText}>עריכה</Text>
-                      </TouchableOpacity>
-                    </View>
-                  </View>
-                ))
+                  );
+                })
               )}
             </>
           )}
@@ -1287,6 +1299,24 @@ const styles = StyleSheet.create({
   mealCardActions: {
     flexDirection: 'row',
     gap: 8,
+  },
+  builtInMealBadge: {
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    backgroundColor: COLORS.primary + '14',
+    borderColor: COLORS.primary + '33',
+    borderRadius: 999,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: 6,
+    marginTop: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+  },
+  builtInMealBadgeText: {
+    color: COLORS.primary,
+    fontSize: 12,
+    fontWeight: '600',
   },
   mealSecondaryBtn: {
     alignItems: 'center',

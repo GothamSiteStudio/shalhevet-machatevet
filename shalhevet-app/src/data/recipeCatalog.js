@@ -45,6 +45,76 @@ export function createNutritionMealFromRecipe(recipe, makeId = fallbackMakeId) {
   };
 }
 
+export const CATALOG_MEAL_SOURCE = 'catalog';
+
+function normalizeMealTitle(value) {
+  return String(value || '')
+    .trim()
+    .toLowerCase();
+}
+
+function sortCoachMeals(left, right) {
+  const categoryCompare = String(left.category || '').localeCompare(
+    String(right.category || ''),
+    'he'
+  );
+
+  if (categoryCompare !== 0) return categoryCompare;
+
+  return String(left.title || '').localeCompare(String(right.title || ''), 'he');
+}
+
+export function createCoachMealFromRecipe(recipe) {
+  return {
+    id: `catalog-${recipe.id}`,
+    source: CATALOG_MEAL_SOURCE,
+    title: recipe.title,
+    category: recipe.category,
+    description: recipe.summary || '',
+    imageUrl: '',
+    calories: recipe.caloriesPerServing ?? null,
+    protein: null,
+    carbs: null,
+    fat: null,
+    servings: recipe.servings ?? 1,
+    portion: recipe.portion || '',
+    ingredients: Array.isArray(recipe.ingredients) ? [...recipe.ingredients] : [],
+    instructions: Array.isArray(recipe.instructions) ? [...recipe.instructions] : [],
+    items: [
+      {
+        id: `catalog-item-${recipe.id}`,
+        name: recipe.title,
+        amount: recipe.portion || '',
+        imageUrl: '',
+        calories: recipe.caloriesPerServing ?? 0,
+        protein: 0,
+        carbs: 0,
+        fat: 0,
+        notes: formatRecipeNotes(recipe),
+      },
+    ],
+  };
+}
+
+export function mergeRecipeCatalogWithCoachMeals(meals = []) {
+  const customMeals = Array.isArray(meals)
+    ? meals.filter(Boolean).map(meal => ({
+        ...meal,
+        source: meal.source || 'coach',
+      }))
+    : [];
+
+  const customMealTitles = new Set(
+    customMeals.map(meal => normalizeMealTitle(meal.title)).filter(Boolean)
+  );
+
+  const catalogMeals = RECIPE_CATALOG.filter(
+    recipe => !customMealTitles.has(normalizeMealTitle(recipe.title))
+  ).map(createCoachMealFromRecipe);
+
+  return [...catalogMeals, ...customMeals].sort(sortCoachMeals);
+}
+
 export const RECIPE_CATALOG = [
   {
     id: 'tuna-bread',
