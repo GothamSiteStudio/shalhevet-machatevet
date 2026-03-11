@@ -551,16 +551,19 @@ export default function CoachClientPlansModal({ visible, clientId, onClose, onSa
 
     setLoading(true);
     try {
-      const [result, mealsRes] = await Promise.all([
-        coachAPI.getClient(clientId),
-        coachAPI.getMeals(),
-      ]);
+      const result = await coachAPI.getClient(clientId);
       setClient(result.client || null);
       setAccountForm(mapClientToAccountForm(result.client));
       setGoalsForm(mapGoalsToForm(result.goals));
       setNutritionForm(mapNutritionToForm(result.nutritionPlan));
       setWorkoutForm(mapWorkoutToForm(result.workoutPlan));
-      setCoachMeals(mealsRes.meals || []);
+
+      try {
+        const mealsRes = await coachAPI.getMeals();
+        setCoachMeals(mealsRes.meals || []);
+      } catch {
+        setCoachMeals([]);
+      }
     } catch (err) {
       Alert.alert('שגיאה', err.message || 'לא ניתן לטעון את פרטי הלקוחה');
       onClose();

@@ -482,18 +482,24 @@ export default function CoachDashboardScreen() {
 
   const loadData = useCallback(async () => {
     try {
-      const [clientsRes, updatesRes, meetingsRes, statsRes, mealsRes] = await Promise.all([
+      const [clientsRes, updatesRes, meetingsRes, statsRes] = await Promise.all([
         coachAPI.getClients(),
         coachAPI.getUpdates(),
         coachAPI.getMeetings(),
         coachAPI.getStats(),
-        coachAPI.getMeals(),
       ]);
       setClients(clientsRes.clients || []);
       setUpdates(updatesRes.updates || []);
       setMeetings(meetingsRes.meetings || []);
       setStats(statsRes.stats || null);
-      setCoachMeals(mealsRes.meals || []);
+
+      // טעינת מאגר ארוחות - לא מפיל את שאר הטעינה אם נכשל
+      try {
+        const mealsRes = await coachAPI.getMeals();
+        setCoachMeals(mealsRes.meals || []);
+      } catch {
+        setCoachMeals([]);
+      }
     } catch (err) {
       Alert.alert('שגיאה בטעינה', err.message);
     } finally {
