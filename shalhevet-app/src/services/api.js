@@ -74,6 +74,17 @@ export const usersAPI = {
   getPlans: () => apiRequest('GET', '/users/plans'),
   getGoals: () => apiRequest('GET', '/users/goals'),
   getNutritionPlan: () => apiRequest('GET', '/users/nutrition-plan'),
+  getFoodDiary: (date, options = {}) => {
+    const query = [];
+    if (date) query.push(`date=${encodeURIComponent(date)}`);
+    if (options.includeRecent) query.push('includeRecent=true');
+    if (options.recentLimit) {
+      query.push(`recentLimit=${encodeURIComponent(options.recentLimit)}`);
+    }
+
+    return apiRequest('GET', `/users/food-diary${query.length ? `?${query.join('&')}` : ''}`);
+  },
+  saveFoodDiary: (date, data) => apiRequest('PUT', `/users/food-diary/${date}`, data),
   getWorkoutPlan: () => apiRequest('GET', '/users/workout-plan'),
 
   // עדכון פרטים

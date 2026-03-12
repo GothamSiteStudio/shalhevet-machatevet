@@ -17,6 +17,11 @@ import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../theme/colors';
 import { coachAPI } from '../services/api';
 import { RECIPE_CATALOG, createNutritionMealFromRecipe } from '../data/recipeCatalog';
+import {
+  FOOD_DIARY_MEAL_TYPES,
+  getFoodDiaryMealLabel,
+  normalizeFoodDiaryEntry,
+} from '../utils/foodDiary';
 
 const TABS = [
   { id: 'account', label: 'חשבון', icon: 'key-outline' },
@@ -481,6 +486,7 @@ export default function CoachClientPlansModal({ visible, clientId, onClose, onSa
   const [coachMeals, setCoachMeals] = useState([]);
   const [coachMealQuery, setCoachMealQuery] = useState('');
   const [activeCoachMealCategory, setActiveCoachMealCategory] = useState('הכל');
+  const [foodDiaryEntries, setFoodDiaryEntries] = useState([]);
 
   const resetForms = useCallback(() => {
     setClient(null);
@@ -493,6 +499,7 @@ export default function CoachClientPlansModal({ visible, clientId, onClose, onSa
     setCoachMeals([]);
     setCoachMealQuery('');
     setActiveCoachMealCategory('הכל');
+    setFoodDiaryEntries([]);
   }, []);
 
   const queryMatchedRecipes = RECIPE_CATALOG.filter(recipe => {
@@ -557,6 +564,13 @@ export default function CoachClientPlansModal({ visible, clientId, onClose, onSa
       setGoalsForm(mapGoalsToForm(result.goals));
       setNutritionForm(mapNutritionToForm(result.nutritionPlan));
       setWorkoutForm(mapWorkoutToForm(result.workoutPlan));
+      setFoodDiaryEntries(
+        Array.isArray(result.foodDiaryEntries)
+          ? result.foodDiaryEntries.map(entry => normalizeFoodDiaryEntry(entry, entry?.date))
+          : result.todayFoodDiary
+            ? [normalizeFoodDiaryEntry(result.todayFoodDiary, result.todayFoodDiary?.date)]
+            : []
+      );
 
       try {
         const mealsRes = await coachAPI.getMeals();
@@ -1074,6 +1088,74 @@ export default function CoachClientPlansModal({ visible, clientId, onClose, onSa
 
   const renderNutritionTab = () => (
     <>
+      <SectionCard
+        title="יומן אכילה בפועל"
+        subtitle="מה שהלקוחה סימנה באפליקציה. זה אותו מידע שמשפיע על הקלוריות שנותרו אצלה."
+        icon="journal-outline"
+      >
+        {foodDiaryEntries.length === 0 ? (
+          <Text style={styles.emptyStateText}>הלקוחה עדיין לא רשמה ארוחות ביומן האכילה.</Text>
+        ) : (
+          <>
+            <View style={styles.summaryChipsRow}>
+              <SummaryChip
+                label="יום אחרון"
+                value={foodDiaryEntries[0].date || '—'}
+                color={COLORS.primary}
+              />
+              <SummaryChip
+                label="קלוריות"
+                value={Math.round(foodDiaryEntries[0].totals.calories)}
+                color={COLORS.accent}
+              />
+              <SummaryChip
+                label="פריטים"
+                value={FOOD_DIARY_MEAL_TYPES.reduce(
+                  (sum, mealType) => sum + foodDiaryEntries[0].meals[mealType].length,
+                  0
+                )}
+                color={COLORS.info}
+              />
+            </View>
+
+            {foodDiaryEntries.map(entry => {
+              const totals = entry.totals;
+              const mealSummary = FOOD_DIARY_MEAL_TYPES.filter(
+                mealType => entry.meals[mealType].length > 0
+              )
+                .map(mealType => `${getFoodDiaryMealLabel(mealType)}: ${entry.meals[mealType].length}`)
+                .join(' | ');
+
+              return (
+                <View key={entry.id || entry.date} style={styles.foodDiaryDayCard}>
+                  <View style={styles.foodDiaryDayHeader}>
+                    <Text style={styles.foodDiaryDayCalories}>{Math.round(totals.calories)} קל׳</Text>
+                    <Text style={styles.foodDiaryDayDate}>{entry.date}</Text>
+                  </View>
+                  <View style={styles.foodDiaryDayMeta}>
+                    <Text style={styles.foodDiaryDayMetaText}>ח׳ {totals.protein.toFixed(0)}ג׳</Text>
+                    <Text style={styles.foodDiaryDayMetaText}>פ׳ {totals.carbs.toFixed(0)}ג׳</Text>
+                    <Text style={styles.foodDiaryDayMetaText}>ש׳ {totals.fat.toFixed(0)}ג׳</Text>
+                  </View>
+                  <Text style={styles.foodDiaryDayMeals}>
+                    {mealSummary || 'באותו יום עדיין לא נרשמו ארוחות.'}
+                  </Text>
+                </View>
+              );
+            })}
+          </>
+        )}
+      </SectionCard>
+
+      <View style={styles.accountInfoBox}>
+        <Ionicons name="information-circle-outline" size={18} color={COLORS.info} />
+        <Text style={styles.accountInfoText}>
+          כדי לעדכן תפריט ללקוחה: הוסיפי ארוחות מהמאגר שלך או מספריית המתכונים,
+          ערכי לפי הצורך, ואז לחצי על שמרי תפריט. אחרי השמירה התפריט מתעדכן מייד
+          במסך התזונה של הלקוחה.
+        </Text>
+      </View>
+
       <SectionCard
         title="פרטי תפריט"
         subtitle="שם לתפריט, הערות ודגשים יומיים"
@@ -1768,7 +1850,7 @@ export default function CoachClientPlansModal({ visible, clientId, onClose, onSa
             </TouchableOpacity>
             <View style={styles.modalHeaderText}>
               <Text style={styles.modalTitle}>ניהול לקוחה</Text>
-              <Text style={styles.modalSub}>חשבון, יעדים, תפריט אישי ותוכנית אימון</Text>
+              <Text style={styles.modalSub}>חשבון, יעדים, תפריט, יומן אכילה ותוכנית אימון</Text>
             </View>
             <View style={styles.headerIconBtn} />
           </View>
@@ -1994,6 +2076,45 @@ const styles = StyleSheet.create({
     fontSize: 12,
     paddingVertical: 8,
     textAlign: 'center',
+  },
+  foodDiaryDayCard: {
+    backgroundColor: COLORS.card,
+    borderColor: COLORS.border,
+    borderRadius: 16,
+    borderWidth: 1,
+    marginTop: 10,
+    padding: 12,
+  },
+  foodDiaryDayHeader: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+  foodDiaryDayCalories: {
+    color: COLORS.primary,
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  foodDiaryDayDate: {
+    color: COLORS.white,
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  foodDiaryDayMeta: {
+    flexDirection: 'row-reverse',
+    gap: 10,
+    marginBottom: 8,
+  },
+  foodDiaryDayMetaText: {
+    color: COLORS.textSecondary,
+    fontSize: 11,
+  },
+  foodDiaryDayMeals: {
+    color: COLORS.textMuted,
+    fontSize: 12,
+    lineHeight: 18,
+    textAlign: 'right',
   },
   fieldGroup: {
     marginBottom: 12,

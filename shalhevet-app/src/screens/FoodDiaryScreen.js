@@ -1,5 +1,6 @@
 import React, { useState, useMemo, useCallback } from 'react';
 import {
+  ActivityIndicator,
   Alert,
   FlatList,
   Image,
@@ -13,12 +14,14 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { COLORS } from '../theme/colors';
-import useStore from '../store/useStore';
+import { usersAPI } from '../services/api';
 import { FOOD_DATABASE, searchFoods, calculateNutrition } from '../data/foodDatabase';
+import { getFoodDiaryDateKey, normalizeFoodDiaryEntry } from '../utils/foodDiary';
 
 const MEAL_CONFIG = {
   breakfast: { label: 'ארוחת בוקר', icon: 'sunny-outline', color: '#FFA726' },
@@ -27,13 +30,6 @@ const MEAL_CONFIG = {
   snacks: { label: 'נשנושים', icon: 'cafe-outline', color: '#42A5F5' },
 };
 
-function getFormattedDate(date) {
-  const d = date.getDate().toString().padStart(2, '0');
-  const m = (date.getMonth() + 1).toString().padStart(2, '0');
-  const y = date.getFullYear();
-  return `${y}-${m}-${d}`;
-}
-
 function getHebrewDate(date) {
   const days = ['ראשון', 'שני', 'שלישי', 'רביעי', 'חמישי', 'שישי', 'שבת'];
   const months = [
@@ -41,6 +37,10 @@ function getHebrewDate(date) {
     'יולי', 'אוגוסט', 'ספטמבר', 'אוקטובר', 'נובמבר', 'דצמבר',
   ];
   return `יום ${days[date.getDay()]}, ${date.getDate()} ${months[date.getMonth()]}`;
+}
+
+function createDiaryItemId() {
+  return `fd-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
 }
 
 // ─── Add Food Modal ─────────────────────────────────────
@@ -425,16 +425,58 @@ function MealTile({ mealType, items, onAdd, onRemove }) {
 
 // ─── Main Screen ────────────────────────────────────────
 export default function FoodDiaryScreen({ navigation }) {
-  const { getFoodDiaryByDate, addFoodDiaryItem, removeFoodDiaryItem, getDiaryDayTotals } =
-    useStore();
-
   const [currentDate, setCurrentDate] = useState(new Date());
   const [addModalVisible, setAddModalVisible] = useState(false);
   const [activeMealType, setActiveMealType] = useState('breakfast');
+  const [diaryEntry, setDiaryEntry] = useState(() => normalizeFoodDiaryEntry(null));
+  const [loading, setLoading] = useState(true);
+  const [syncing, setSyncing] = useState(false);
+  const [loadError, setLoadError] = useState('');
 
-  const dateKey = getFormattedDate(currentDate);
-  const diary = getFoodDiaryByDate(dateKey);
-  const dayTotals = getDiaryDayTotals(dateKey);
+  const dateKey = getFoodDiaryDateKey(currentDate);
+  const diary = diaryEntry.meals;
+  const dayTotals = diaryEntry.totals;
+
+  const loadDiary = useCallback(async () => {
+    setLoading(true);
+
+    try {
+      const result = await usersAPI.getFoodDiary(dateKey);
+      setDiaryEntry(normalizeFoodDiaryEntry(result.entry, dateKey));
+      setLoadError('');
+    } catch (err) {
+      setDiaryEntry(normalizeFoodDiaryEntry(null, dateKey));
+      setLoadError(err.message || 'לא ניתן לטעון את יומן האכילה כרגע');
+    } finally {
+      setLoading(false);
+    }
+  }, [dateKey]);
+
+  useFocusEffect(
+    useCallback(() => {
+      loadDiary();
+    }, [loadDiary])
+  );
+
+  const saveDiary = useCallback(
+    async nextMeals => {
+      setDiaryEntry(normalizeFoodDiaryEntry({ date: dateKey, meals: nextMeals }, dateKey));
+      setSyncing(true);
+
+      try {
+        const result = await usersAPI.saveFoodDiary(dateKey, { meals: nextMeals });
+        setDiaryEntry(normalizeFoodDiaryEntry(result.entry, dateKey));
+        setLoadError('');
+      } catch (err) {
+        setLoadError(err.message || 'לא ניתן לסנכרן את יומן האכילה');
+        Alert.alert('שגיאה', err.message || 'לא ניתן לשמור את יומן האכילה כרגע');
+        await loadDiary();
+      } finally {
+        setSyncing(false);
+      }
+    },
+    [dateKey, loadDiary]
+  );
 
   const goDate = useCallback(
     delta => {
@@ -451,11 +493,24 @@ export default function FoodDiaryScreen({ navigation }) {
   };
 
   const handleAddItem = item => {
-    addFoodDiaryItem(dateKey, activeMealType, item);
+    const nextMeals = {
+      ...diary,
+      [activeMealType]: [
+        ...diary[activeMealType],
+        { ...item, id: item.id || createDiaryItemId() },
+      ],
+    };
+
+    saveDiary(nextMeals);
   };
 
   const handleRemoveItem = (mealType, itemId) => {
-    removeFoodDiaryItem(dateKey, mealType, itemId);
+    const nextMeals = {
+      ...diary,
+      [mealType]: diary[mealType].filter(item => item.id !== itemId),
+    };
+
+    saveDiary(nextMeals);
   };
 
   const handleTakePhoto = async () => {
@@ -471,25 +526,44 @@ export default function FoodDiaryScreen({ navigation }) {
       quality: 0.7,
     });
     if (!result.canceled && result.assets?.[0]) {
-      // Add photo as a food item - user enters name + macros
       const uri = result.assets[0].uri;
       setActiveMealType('snacks');
-      addFoodDiaryItem(dateKey, 'snacks', {
-        name: 'צילום אוכל 📸',
-        portion: '',
-        calories: 0,
-        protein: 0,
-        carbs: 0,
-        fat: 0,
-        photoUri: uri,
-        source: 'photo',
-      });
+      const nextMeals = {
+        ...diary,
+        snacks: [
+          ...diary.snacks,
+          {
+            id: createDiaryItemId(),
+            name: 'צילום אוכל 📸',
+            portion: '',
+            calories: 0,
+            protein: 0,
+            carbs: 0,
+            fat: 0,
+            photoUri: uri,
+            source: 'photo',
+          },
+        ],
+      };
+
+      saveDiary(nextMeals);
       Alert.alert(
         '📸 צילום נוסף!',
         'הצילום נוסף לנשנושים. בקרוב נשלב AI שמזהה אוכל ומחשב קלוריות אוטומטית!',
       );
     }
   };
+
+  if (loading) {
+    return (
+      <SafeAreaView style={styles.safe}>
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={COLORS.primary} />
+          <Text style={styles.loadingText}>טוען יומן אכילה...</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.safe}>
@@ -510,7 +584,7 @@ export default function FoodDiaryScreen({ navigation }) {
           </TouchableOpacity>
           <View style={styles.dateCenter}>
             <Text style={styles.dateText}>{getHebrewDate(currentDate)}</Text>
-            {getFormattedDate(new Date()) === dateKey && (
+            {getFoodDiaryDateKey() === dateKey && (
               <Text style={styles.dateTodayBadge}>היום</Text>
             )}
           </View>
@@ -519,9 +593,21 @@ export default function FoodDiaryScreen({ navigation }) {
           </TouchableOpacity>
         </View>
 
+        {loadError ? (
+          <View style={styles.syncNoticeCard}>
+            <Ionicons name="cloud-offline-outline" size={18} color={COLORS.warning} />
+            <Text style={styles.syncNoticeText}>{loadError}</Text>
+          </View>
+        ) : null}
+
         {/* Day Summary */}
         <View style={styles.summaryCard}>
           <Text style={styles.summaryTitle}>סיכום יומי</Text>
+          <Text style={styles.summarySubtitle}>
+            {syncing
+              ? 'מסנכרן עכשיו למאמנת...'
+              : 'היומן נשמר אוטומטית ומופיע גם למאמנת.'}
+          </Text>
           <View style={styles.summaryRow}>
             <View style={styles.summaryItem}>
               <Text style={styles.summaryValue}>{Math.round(dayTotals.calories)}</Text>
@@ -596,6 +682,20 @@ export default function FoodDiaryScreen({ navigation }) {
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: COLORS.background },
   container: { paddingHorizontal: 16, paddingBottom: 40 },
+  loadingContainer: { alignItems: 'center', flex: 1, gap: 12, justifyContent: 'center' },
+  loadingText: { color: COLORS.textSecondary, fontSize: 15 },
+  syncNoticeCard: {
+    alignItems: 'center',
+    backgroundColor: COLORS.card,
+    borderColor: COLORS.border,
+    borderRadius: 14,
+    borderWidth: 1,
+    flexDirection: 'row-reverse',
+    gap: 8,
+    marginBottom: 12,
+    padding: 12,
+  },
+  syncNoticeText: { color: COLORS.textSecondary, flex: 1, fontSize: 13, textAlign: 'right' },
 
   // Header
   header: {
@@ -607,6 +707,12 @@ const styles = StyleSheet.create({
   },
   backBtn: { padding: 6 },
   pageTitle: { color: COLORS.white, fontSize: 22, fontWeight: 'bold' },
+  summarySubtitle: {
+    color: COLORS.textSecondary,
+    fontSize: 12,
+    marginBottom: 12,
+    textAlign: 'center',
+  },
 
   // Date Navigator
   dateNav: {

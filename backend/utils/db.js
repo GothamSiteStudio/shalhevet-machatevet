@@ -191,6 +191,92 @@ function mapLog(row) {
   };
 }
 
+const FOOD_DIARY_MEAL_TYPES = ["breakfast", "lunch", "dinner", "snacks"];
+
+function createEmptyFoodDiaryMeals() {
+  return {
+    breakfast: [],
+    lunch: [],
+    dinner: [],
+    snacks: [],
+  };
+}
+
+function mapFoodDiaryItem(item, mealType, index) {
+  return {
+    id:
+      item?.id ||
+      `food-diary-${mealType}-${index + 1}`,
+    name: item?.name || "פריט מזון",
+    portion: item?.portion || "",
+    calories: toNumberOrNull(item?.calories) ?? 0,
+    protein: toNumberOrNull(item?.protein) ?? 0,
+    carbs: toNumberOrNull(item?.carbs) ?? 0,
+    fat: toNumberOrNull(item?.fat) ?? 0,
+    source: item?.source || "",
+    photoUri: item?.photoUri || "",
+  };
+}
+
+function normalizeFoodDiaryPayload(payload, fallbackDate) {
+  const source =
+    payload?.meals && typeof payload.meals === "object"
+      ? payload.meals
+      : payload && typeof payload === "object"
+        ? payload
+        : {};
+
+  const meals = FOOD_DIARY_MEAL_TYPES.reduce((accumulator, mealType) => {
+    accumulator[mealType] = Array.isArray(source[mealType])
+      ? source[mealType].map((item, index) =>
+          mapFoodDiaryItem(item, mealType, index),
+        )
+      : [];
+    return accumulator;
+  }, createEmptyFoodDiaryMeals());
+
+  const items = FOOD_DIARY_MEAL_TYPES.flatMap((mealType) => meals[mealType]);
+
+  return {
+    date:
+      toDateOnly(payload?.date || fallbackDate) ||
+      new Date().toISOString().split("T")[0],
+    meals,
+    totals: {
+      calories: items.reduce(
+        (sum, item) => sum + (toNumberOrNull(item.calories) ?? 0),
+        0,
+      ),
+      protein: items.reduce(
+        (sum, item) => sum + (toNumberOrNull(item.protein) ?? 0),
+        0,
+      ),
+      carbs: items.reduce(
+        (sum, item) => sum + (toNumberOrNull(item.carbs) ?? 0),
+        0,
+      ),
+      fat: items.reduce(
+        (sum, item) => sum + (toNumberOrNull(item.fat) ?? 0),
+        0,
+      ),
+    },
+  };
+}
+
+function mapFoodDiaryEntry(row) {
+  if (!row) return null;
+
+  const normalized = normalizeFoodDiaryPayload(row.payload || {}, row.created_at);
+
+  return {
+    id: row.id,
+    userId: row.user_id,
+    ...normalized,
+    createdAt: toIsoString(row.created_at),
+    updatedAt: toIsoString(row.updated_at),
+  };
+}
+
 async function ensureCoachUser(client) {
   const coachEmail = (process.env.COACH_EMAIL || "").toLowerCase().trim();
   const coachPassword = process.env.COACH_PASSWORD || "";
@@ -735,6 +821,107 @@ async function addMessage(fromId, toId, text, fromRole) {
   return mapMessage(result.rows[0]);
 }
 
+async function getFoodDiaryEntry(userId, date) {
+  const normalizedDate =
+    toDateOnly(date) || new Date().toISOString().split("T")[0];
+  const result = await query(
+    `
+      SELECT *
+      FROM nutrition_logs
+      WHERE user_id = $1
+        AND payload->>'type' = 'food-diary'
+        AND payload->>'date' = $2
+      ORDER BY created_at DESC
+      LIMIT 1
+    `,
+    [userId, normalizedDate],
+  );
+
+  return (
+    mapFoodDiaryEntry(result.rows[0]) || {
+      id: null,
+      userId,
+      date: normalizedDate,
+      meals: createEmptyFoodDiaryMeals(),
+      totals: {
+        calories: 0,
+        protein: 0,
+        carbs: 0,
+        fat: 0,
+      },
+      createdAt: null,
+      updatedAt: null,
+    }
+  );
+}
+
+async function listFoodDiaryEntries(userId, limit = 7) {
+  const safeLimit = Math.max(1, Math.min(Number(limit) || 7, 31));
+  const result = await query(
+    `
+      SELECT *
+      FROM nutrition_logs
+      WHERE user_id = $1
+        AND payload->>'type' = 'food-diary'
+      ORDER BY COALESCE(payload->>'date', '') DESC, created_at DESC
+      LIMIT $2
+    `,
+    [userId, safeLimit],
+  );
+
+  return result.rows.map(mapFoodDiaryEntry);
+}
+
+async function saveFoodDiaryEntry(userId, date, entryData) {
+  const normalizedDate =
+    toDateOnly(date) || new Date().toISOString().split("T")[0];
+  const normalizedEntry = normalizeFoodDiaryPayload(entryData || {}, normalizedDate);
+  const payload = {
+    type: "food-diary",
+    date: normalizedDate,
+    meals: normalizedEntry.meals,
+    totals: normalizedEntry.totals,
+  };
+
+  const existing = await query(
+    `
+      SELECT id
+      FROM nutrition_logs
+      WHERE user_id = $1
+        AND payload->>'type' = 'food-diary'
+        AND payload->>'date' = $2
+      ORDER BY created_at DESC
+      LIMIT 1
+    `,
+    [userId, normalizedDate],
+  );
+
+  if (existing.rowCount > 0) {
+    const result = await query(
+      `
+        UPDATE nutrition_logs
+        SET payload = $1::jsonb, updated_at = NOW()
+        WHERE id = $2
+        RETURNING *
+      `,
+      [JSON.stringify(payload), existing.rows[0].id],
+    );
+
+    return mapFoodDiaryEntry(result.rows[0]);
+  }
+
+  const result = await query(
+    `
+      INSERT INTO nutrition_logs (id, user_id, payload, created_at, updated_at)
+      VALUES ($1, $2, $3::jsonb, NOW(), NOW())
+      RETURNING *
+    `,
+    [createRecordId("nutrition-log"), userId, JSON.stringify(payload)],
+  );
+
+  return mapFoodDiaryEntry(result.rows[0]);
+}
+
 // ─── Coach Meals (מאגר ארוחות של המאמנת) ────────────────────────────────────
 
 function mapCoachMeal(row) {
@@ -903,6 +1090,9 @@ module.exports = {
   getMessages,
   getAllMessages,
   addMessage,
+  getFoodDiaryEntry,
+  listFoodDiaryEntries,
+  saveFoodDiaryEntry,
   getAllCoachMeals,
   getCoachMealById,
   createCoachMeal,

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useCallback, useState } from 'react';
 import {
   View,
   Text,
@@ -11,11 +11,14 @@ import {
   Alert,
   AccessibilityInfo,
 } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons, MaterialCommunityIcons, FontAwesome5 } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { COLORS } from '../theme/colors';
+import { usersAPI } from '../services/api';
 import useStore from '../store/useStore';
+import { getFoodDiaryDateKey, normalizeFoodDiaryEntry } from '../utils/foodDiary';
 
 const { width } = Dimensions.get('window');
 const CARD_SIZE = (width - 48 - 16) / 2;
@@ -27,6 +30,11 @@ const getGreeting = () => {
   if (h < 21) return 'ערב טוב';
   return 'לילה טוב';
 };
+
+function toNumber(value) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
 
 const MENU_ITEMS = [
   {
@@ -222,6 +230,53 @@ function WeightModal({ visible, onClose }) {
 export default function HomeScreen({ navigation }) {
   const user = useStore((s) => s.user);
   const [showWeightModal, setShowWeightModal] = useState(false);
+  const [calorieSummary, setCalorieSummary] = useState({
+    loading: true,
+    targetCalories: 0,
+    consumedCalories: 0,
+    remainingCalories: null,
+    hasTarget: false,
+    error: '',
+  });
+
+  const loadCalorieSummary = useCallback(async () => {
+    const todayDateKey = getFoodDiaryDateKey();
+    const [planResult, diaryResult] = await Promise.allSettled([
+      usersAPI.getNutritionPlan(),
+      usersAPI.getFoodDiary(todayDateKey),
+    ]);
+
+    const nutritionPlan =
+      planResult.status === 'fulfilled' ? planResult.value.nutritionPlan : null;
+    const diaryEntry =
+      diaryResult.status === 'fulfilled'
+        ? normalizeFoodDiaryEntry(diaryResult.value.entry, todayDateKey)
+        : normalizeFoodDiaryEntry(null, todayDateKey);
+    const targetCalories = toNumber(nutritionPlan?.dailyTargets?.calories);
+    const consumedCalories = Math.round(diaryEntry.totals.calories);
+    const hasTarget = targetCalories > 0;
+    const error =
+      planResult.status === 'rejected'
+        ? planResult.reason?.message || 'לא ניתן לטעון את התפריט'
+        : diaryResult.status === 'rejected'
+          ? diaryResult.reason?.message || 'לא ניתן לטעון את יומן האכילה'
+          : '';
+
+    setCalorieSummary({
+      loading: false,
+      targetCalories,
+      consumedCalories,
+      remainingCalories: hasTarget ? Math.max(targetCalories - consumedCalories, 0) : null,
+      hasTarget,
+      error,
+    });
+  }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      loadCalorieSummary();
+    }, [loadCalorieSummary])
+  );
 
   const handleItemPress = (item) => {
     if (item.id === 'weight') {
@@ -290,6 +345,67 @@ export default function HomeScreen({ navigation }) {
             <Text style={styles.statLabel}>מאמנת</Text>
           </View>
         </View>
+
+        <TouchableOpacity
+          style={styles.calorieCard}
+          onPress={() => navigation.navigate('Nutrition')}
+          activeOpacity={0.85}
+          accessible={true}
+          accessibilityLabel="כרטיס מאזן קלוריות יומי"
+          accessibilityHint="מעבר למסך התזונה עם פירוט היתרה הקלורית והיומן"
+        >
+          <View style={styles.calorieHeader}>
+            <Ionicons name="chevron-back" size={18} color={COLORS.textSecondary} />
+            <View style={styles.calorieHeaderText}>
+              <Text style={styles.calorieTitle}>מאזן קלוריות להיום</Text>
+              <Text style={styles.calorieSubtitle}>
+                {calorieSummary.loading
+                  ? 'טוען תפריט ויומן אכילה...'
+                  : calorieSummary.hasTarget
+                    ? 'מחושב לפי מה שנרשם ביומן האכילה שלך'
+                    : 'כדי לחשב יתרה צריך יעד קלורי מהמאמנת'}
+              </Text>
+            </View>
+            <View style={styles.calorieIconWrap}>
+              <Ionicons name="flame-outline" size={22} color={COLORS.primary} />
+            </View>
+          </View>
+
+          <View style={styles.calorieMetricsRow}>
+            <View style={styles.calorieMetric}>
+              <Text style={styles.calorieMetricValue}>
+                {calorieSummary.loading
+                  ? '...'
+                  : calorieSummary.hasTarget
+                    ? calorieSummary.remainingCalories
+                    : '—'}
+              </Text>
+              <Text style={styles.calorieMetricLabel}>נשארו</Text>
+            </View>
+            <View style={styles.calorieMetricDivider} />
+            <View style={styles.calorieMetric}>
+              <Text style={styles.calorieMetricValue}>
+                {calorieSummary.loading ? '...' : calorieSummary.consumedCalories}
+              </Text>
+              <Text style={styles.calorieMetricLabel}>נאכל</Text>
+            </View>
+            <View style={styles.calorieMetricDivider} />
+            <View style={styles.calorieMetric}>
+              <Text style={styles.calorieMetricValue}>
+                {calorieSummary.loading
+                  ? '...'
+                  : calorieSummary.hasTarget
+                    ? calorieSummary.targetCalories
+                    : '—'}
+              </Text>
+              <Text style={styles.calorieMetricLabel}>יעד</Text>
+            </View>
+          </View>
+
+          {calorieSummary.error ? (
+            <Text style={styles.calorieErrorText}>{calorieSummary.error}</Text>
+          ) : null}
+        </TouchableOpacity>
 
         {/* Grid */}
         <View
@@ -379,6 +495,60 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: COLORS.border,
     alignItems: 'center',
+  },
+  calorieCard: {
+    backgroundColor: COLORS.card,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    marginBottom: 20,
+    padding: 16,
+  },
+  calorieHeader: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 14,
+  },
+  calorieHeaderText: { alignItems: 'flex-end', flex: 1 },
+  calorieTitle: { color: COLORS.white, fontSize: 16, fontWeight: '700', textAlign: 'right' },
+  calorieSubtitle: {
+    color: COLORS.textSecondary,
+    fontSize: 12,
+    marginTop: 3,
+    textAlign: 'right',
+  },
+  calorieIconWrap: {
+    alignItems: 'center',
+    backgroundColor: COLORS.primary + '18',
+    borderRadius: 12,
+    height: 42,
+    justifyContent: 'center',
+    marginLeft: 12,
+    width: 42,
+  },
+  calorieMetricsRow: {
+    alignItems: 'center',
+    flexDirection: 'row-reverse',
+  },
+  calorieMetric: { alignItems: 'center', flex: 1 },
+  calorieMetricValue: {
+    color: COLORS.white,
+    fontSize: 20,
+    fontWeight: '700',
+    textAlign: 'center',
+  },
+  calorieMetricLabel: { color: COLORS.textMuted, fontSize: 11, marginTop: 3 },
+  calorieMetricDivider: {
+    backgroundColor: COLORS.border,
+    height: 34,
+    width: 1,
+  },
+  calorieErrorText: {
+    color: COLORS.warning,
+    fontSize: 12,
+    marginTop: 12,
+    textAlign: 'right',
   },
   statCard: {
     flex: 1,

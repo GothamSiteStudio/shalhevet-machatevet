@@ -29,6 +29,7 @@ const {
   createUser,
   updateUser,
   getClientGoals,
+  getFoodDiaryEntry,
   upsertClientGoals,
   getNutritionPlan,
   upsertNutritionPlan,
@@ -43,6 +44,7 @@ const {
   updateMeetingStatus,
   getAllMessages,
   addMessage,
+  listFoodDiaryEntries,
   getAllCoachMeals,
   getCoachMealById,
   createCoachMeal,
@@ -376,6 +378,8 @@ router.get(
       meetings,
       messages,
       goals,
+      todayFoodDiary,
+      foodDiaryEntries,
       nutritionPlan,
       workoutPlan,
     ] = await Promise.all([
@@ -384,6 +388,8 @@ router.get(
       getMeetings(user.id),
       getMessages(user.id),
       getClientGoals(user.id),
+      getFoodDiaryEntry(user.id, new Date().toISOString().split("T")[0]),
+      listFoodDiaryEntries(user.id, 7),
       getNutritionPlan(user.id),
       getWorkoutPlan(user.id),
     ]);
@@ -396,6 +402,8 @@ router.get(
       meetings,
       messages,
       goals,
+      todayFoodDiary,
+      foodDiaryEntries,
       nutritionPlan,
       workoutPlan,
     });

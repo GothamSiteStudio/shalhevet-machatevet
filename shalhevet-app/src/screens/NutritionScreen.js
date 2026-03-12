@@ -17,6 +17,7 @@ import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { COLORS } from '../theme/colors';
 import useStore from '../store/useStore';
 import { usersAPI } from '../services/api';
+import { getFoodDiaryDateKey, normalizeFoodDiaryEntry } from '../utils/foodDiary';
 
 function toNumber(value) {
   const parsed = Number(value);
@@ -231,6 +232,9 @@ function AIModal({ visible, onClose, onAction }) {
 export default function NutritionScreen({ navigation }) {
   const { waterIntake, waterGoal, setWaterGoal, setWaterIntake } = useStore();
   const [nutritionPlan, setNutritionPlan] = useState(null);
+  const [foodDiaryEntry, setFoodDiaryEntry] = useState(() =>
+    normalizeFoodDiaryEntry(null, getFoodDiaryDateKey())
+  );
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [loadError, setLoadError] = useState('');
@@ -245,16 +249,37 @@ export default function NutritionScreen({ navigation }) {
       }
 
       try {
-        const result = await usersAPI.getNutritionPlan();
-        const plan = normalizeNutritionPlan(result.nutritionPlan);
-        setNutritionPlan(plan);
-        setLoadError('');
+        const todayDateKey = getFoodDiaryDateKey();
+        const [planResult, diaryResult] = await Promise.allSettled([
+          usersAPI.getNutritionPlan(),
+          usersAPI.getFoodDiary(todayDateKey),
+        ]);
 
-        if (plan?.dailyTargets?.waterLiters > 0) {
-          setWaterGoal(plan.dailyTargets.waterLiters);
+        let nextError = '';
+
+        if (planResult.status === 'fulfilled') {
+          const plan = normalizeNutritionPlan(planResult.value.nutritionPlan);
+          setNutritionPlan(plan);
+
+          if (plan?.dailyTargets?.waterLiters > 0) {
+            setWaterGoal(plan.dailyTargets.waterLiters);
+          }
+        } else {
+          setNutritionPlan(null);
+          nextError = planResult.reason?.message || 'לא ניתן לטעון את התפריט האישי כרגע';
         }
+
+        if (diaryResult.status === 'fulfilled') {
+          setFoodDiaryEntry(normalizeFoodDiaryEntry(diaryResult.value.entry, todayDateKey));
+        } else {
+          setFoodDiaryEntry(normalizeFoodDiaryEntry(null, todayDateKey));
+          nextError = nextError || diaryResult.reason?.message || 'לא ניתן לטעון את יומן האכילה';
+        }
+
+        setLoadError(nextError);
       } catch (err) {
         setNutritionPlan(null);
+        setFoodDiaryEntry(normalizeFoodDiaryEntry(null, getFoodDiaryDateKey()));
         setLoadError(err.message || 'לא ניתן לטעון את התפריט האישי כרגע');
       } finally {
         setLoading(false);
@@ -280,12 +305,18 @@ export default function NutritionScreen({ navigation }) {
     Alert.alert('✨ בקרוב!', msgs[id] || 'פיצ׳ר זה יהיה זמין בקרוב');
   };
 
-  const handleAddItem = mealKey => {
-    Alert.alert('הוסף פריט', 'פיצ׳ר הוספת פריטים ידנית יהיה זמין בקרוב');
+  const handleAddItem = () => {
+    navigation.navigate('FoodDiary');
   };
 
   const meals = nutritionPlan?.meals || [];
-  const totals = calculatePlanTotals(meals);
+  const plannedTotals = calculatePlanTotals(meals);
+  const consumedTotals = foodDiaryEntry?.totals || {
+    calories: 0,
+    protein: 0,
+    carbs: 0,
+    fat: 0,
+  };
   const dailyTargets = nutritionPlan?.dailyTargets || {
     calories: 0,
     protein: 0,
@@ -296,19 +327,19 @@ export default function NutritionScreen({ navigation }) {
   const displayedWaterGoal = dailyTargets.waterLiters > 0 ? dailyTargets.waterLiters : waterGoal;
   const remainingCalories =
     dailyTargets.calories > 0
-      ? Math.max(dailyTargets.calories - totals.calories, 0)
-      : totals.calories;
+      ? Math.max(dailyTargets.calories - consumedTotals.calories, 0)
+      : consumedTotals.calories;
   const hasMacroData =
     dailyTargets.protein > 0 ||
     dailyTargets.carbs > 0 ||
     dailyTargets.fat > 0 ||
-    totals.protein > 0 ||
-    totals.carbs > 0 ||
-    totals.fat > 0;
+    consumedTotals.protein > 0 ||
+    consumedTotals.carbs > 0 ||
+    consumedTotals.fat > 0;
   const budgetProgress =
     dailyTargets.calories > 0
-      ? Math.min((totals.calories / dailyTargets.calories) * 100, 100)
-      : meals.length > 0
+      ? Math.min((consumedTotals.calories / dailyTargets.calories) * 100, 100)
+      : consumedTotals.calories > 0
         ? 100
         : 0;
   const waterPct = displayedWaterGoal > 0 ? Math.min(waterIntake / displayedWaterGoal, 1) : 0;
@@ -379,20 +410,31 @@ export default function NutritionScreen({ navigation }) {
           <View style={styles.budgetCard}>
             <View style={styles.budgetTop}>
               <Text style={styles.budgetLabel}>
-                {dailyTargets.calories > 0 ? 'קלוריות שנותרו' : 'קלוריות בתפריט'}
+                {dailyTargets.calories > 0 ? 'קלוריות שנותרו היום' : 'קלוריות שנאכלו היום'}
               </Text>
               <Text style={styles.budgetValue}>{Math.round(remainingCalories)}</Text>
               <Text style={styles.budgetTotal}>
                 {dailyTargets.calories > 0
-                  ? `מתוך ${Math.round(dailyTargets.calories)}`
-                  : meals.length > 0
-                    ? 'עדיין לא הוגדר יעד קלורי'
-                    : 'ממתין לשיוך מתכונים'}
+                  ? `מתוך יעד ${Math.round(dailyTargets.calories)}`
+                  : 'המאזן מוצג לפי מה שנרשם ביומן האכילה'}
               </Text>
             </View>
             <View style={styles.budgetProgressBg}>
               <View style={[styles.budgetProgressFill, { width: `${budgetProgress}%` }]} />
             </View>
+            <View style={styles.budgetBreakdown}>
+              <View style={styles.budgetBreakdownItem}>
+                <Text style={styles.budgetBreakdownValue}>{Math.round(consumedTotals.calories)}</Text>
+                <Text style={styles.budgetBreakdownLabel}>נאכל היום</Text>
+              </View>
+              <View style={styles.budgetBreakdownItem}>
+                <Text style={styles.budgetBreakdownValue}>{Math.round(plannedTotals.calories)}</Text>
+                <Text style={styles.budgetBreakdownLabel}>בתפריט שהוגדר</Text>
+              </View>
+            </View>
+            <Text style={styles.budgetHint}>
+              היתרה מחושבת לפי מה שנרשם ביומן האכילה, וזה גם הנתון שהמאמנת רואה.
+            </Text>
             {hasMacroData ? (
               <View style={styles.macrosRow}>
                 <View style={styles.macroItem}>
@@ -400,8 +442,8 @@ export default function NutritionScreen({ navigation }) {
                   <Text style={styles.macroLabel}>חלבון</Text>
                   <Text style={styles.macroVal}>
                     {dailyTargets.protein > 0
-                      ? `${totals.protein.toFixed(0)}/${dailyTargets.protein}`
-                      : `${totals.protein.toFixed(0)} ג׳`}
+                      ? `${consumedTotals.protein.toFixed(0)}/${dailyTargets.protein}`
+                      : `${consumedTotals.protein.toFixed(0)} ג׳`}
                   </Text>
                 </View>
                 <View style={styles.macroItem}>
@@ -409,8 +451,8 @@ export default function NutritionScreen({ navigation }) {
                   <Text style={styles.macroLabel}>פחמימות</Text>
                   <Text style={styles.macroVal}>
                     {dailyTargets.carbs > 0
-                      ? `${totals.carbs.toFixed(0)}/${dailyTargets.carbs}`
-                      : `${totals.carbs.toFixed(0)} ג׳`}
+                      ? `${consumedTotals.carbs.toFixed(0)}/${dailyTargets.carbs}`
+                      : `${consumedTotals.carbs.toFixed(0)} ג׳`}
                   </Text>
                 </View>
                 <View style={styles.macroItem}>
@@ -418,8 +460,8 @@ export default function NutritionScreen({ navigation }) {
                   <Text style={styles.macroLabel}>שומן</Text>
                   <Text style={styles.macroVal}>
                     {dailyTargets.fat > 0
-                      ? `${totals.fat.toFixed(0)}/${dailyTargets.fat}`
-                      : `${totals.fat.toFixed(0)} ג׳`}
+                      ? `${consumedTotals.fat.toFixed(0)}/${dailyTargets.fat}`
+                      : `${consumedTotals.fat.toFixed(0)} ג׳`}
                   </Text>
                 </View>
               </View>
@@ -438,7 +480,7 @@ export default function NutritionScreen({ navigation }) {
             <View style={styles.diaryBtnTextWrap}>
               <Text style={styles.diaryBtnTitle}>יומן אכילה</Text>
               <Text style={styles.diaryBtnSubtitle}>
-                תעדי מה אכלת · בוקר, צהריים, ערב ונשנושים
+                תעדי מה אכלת, תשפיעי על הקלוריות שנותרו ותסנכרני למאמנת
               </Text>
             </View>
             <View style={styles.diaryBtnIcon}>
@@ -653,6 +695,23 @@ const styles = StyleSheet.create({
     marginBottom: 14,
   },
   budgetProgressFill: { height: '100%', backgroundColor: COLORS.primary, borderRadius: 4 },
+  budgetBreakdown: { flexDirection: 'row-reverse', gap: 10, marginBottom: 12 },
+  budgetBreakdownItem: {
+    alignItems: 'center',
+    backgroundColor: COLORS.cardLight,
+    borderRadius: 12,
+    flex: 1,
+    paddingVertical: 10,
+  },
+  budgetBreakdownValue: { color: COLORS.white, fontSize: 16, fontWeight: '700' },
+  budgetBreakdownLabel: { color: COLORS.textSecondary, fontSize: 11, marginTop: 3 },
+  budgetHint: {
+    color: COLORS.textSecondary,
+    fontSize: 12,
+    lineHeight: 18,
+    marginBottom: 12,
+    textAlign: 'center',
+  },
   macrosRow: { flexDirection: 'row', justifyContent: 'space-around' },
   macroItem: { alignItems: 'center', gap: 4 },
   macroDot: { width: 10, height: 10, borderRadius: 5 },

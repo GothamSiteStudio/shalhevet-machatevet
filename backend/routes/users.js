@@ -17,6 +17,7 @@ const router = express.Router();
 const bcrypt = require("bcryptjs");
 const {
   getClientGoals,
+  getFoodDiaryEntry,
   getNutritionPlan,
   getWorkoutPlan,
   updateUser,
@@ -28,6 +29,8 @@ const {
   addMeeting,
   getMessages,
   addMessage,
+  listFoodDiaryEntries,
+  saveFoodDiaryEntry,
 } = require("../utils/db");
 const { authenticate } = require("../middleware/auth");
 
@@ -35,6 +38,51 @@ function asyncHandler(handler) {
   return (req, res, next) => {
     Promise.resolve(handler(req, res, next)).catch(next);
   };
+}
+
+const FOOD_DIARY_MEAL_TYPES = ["breakfast", "lunch", "dinner", "snacks"];
+
+function isValidDateKey(value) {
+  return /^\d{4}-\d{2}-\d{2}$/.test(String(value || "").trim());
+}
+
+function toSafeNumber(value) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function buildFoodDiaryMeals(body) {
+  const source =
+    body?.meals && typeof body.meals === "object"
+      ? body.meals
+      : body && typeof body === "object"
+        ? body
+        : {};
+
+  return FOOD_DIARY_MEAL_TYPES.reduce((accumulator, mealType) => {
+    accumulator[mealType] = Array.isArray(source[mealType])
+      ? source[mealType].map((item, index) => ({
+          id:
+            item?.id ||
+            `food-diary-${mealType}-${Date.now()}-${index + 1}`,
+          name: String(item?.name || "פריט מזון").trim(),
+          portion: String(item?.portion || "").trim(),
+          calories: toSafeNumber(item?.calories),
+          protein: toSafeNumber(item?.protein),
+          carbs: toSafeNumber(item?.carbs),
+          fat: toSafeNumber(item?.fat),
+          source: String(item?.source || "").trim(),
+          photoUri: String(item?.photoUri || "").trim(),
+        }))
+      : [];
+
+    return accumulator;
+  }, {
+    breakfast: [],
+    lunch: [],
+    dinner: [],
+    snacks: [],
+  });
 }
 
 // כל ה-routes דורשים כניסה
@@ -78,6 +126,53 @@ router.get(
     });
   }),
 );
+
+// ─── GET /api/users/food-diary - יומן אכילה יומי ───────────────────────────
+router.get(
+  "/food-diary",
+  asyncHandler(async (req, res) => {
+    const requestedDate = req.query.date
+      ? String(req.query.date).trim()
+      : new Date().toISOString().split("T")[0];
+
+    if (!isValidDateKey(requestedDate)) {
+      return res.status(400).json({ error: "תאריך לא תקין" });
+    }
+
+    const includeRecent = req.query.includeRecent === "true";
+    const recentLimit = Math.max(1, Math.min(Number(req.query.recentLimit) || 7, 31));
+
+    const [entry, recentEntries] = await Promise.all([
+      getFoodDiaryEntry(req.user.id, requestedDate),
+      includeRecent ? listFoodDiaryEntries(req.user.id, recentLimit) : Promise.resolve([]),
+    ]);
+
+    res.json({ success: true, entry, recentEntries });
+  }),
+);
+
+// ─── PUT /api/users/food-diary/:date - שמירת יומן אכילה ────────────────────
+router.put("/food-diary/:date", async (req, res) => {
+  try {
+    const requestedDate = String(req.params.date || "").trim();
+
+    if (!isValidDateKey(requestedDate)) {
+      return res.status(400).json({ error: "תאריך לא תקין" });
+    }
+
+    const entry = await saveFoodDiaryEntry(req.user.id, requestedDate, {
+      meals: buildFoodDiaryMeals(req.body || {}),
+    });
+
+    res.json({
+      success: true,
+      message: "יומן האכילה עודכן ✅",
+      entry,
+    });
+  } catch (err) {
+    res.status(500).json({ error: "שגיאה בשמירת יומן האכילה" });
+  }
+});
 
 // ─── GET /api/users/workout-plan - תוכנית האימון שלי ───────────────────────
 router.get(
