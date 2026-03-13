@@ -45,8 +45,26 @@ function StatCard({ value, label, icon, color }) {
   );
 }
 
+function getAutomationAccent(level) {
+  switch (level) {
+    case 'urgent':
+      return { backgroundColor: '#B71C1C33', color: '#EF5350', icon: 'alert-circle' };
+    case 'follow_up':
+      return { backgroundColor: '#E6510033', color: '#FFA726', icon: 'time-outline' };
+    case 'monitor':
+      return { backgroundColor: '#1565C033', color: COLORS.info, icon: 'eye-outline' };
+    default:
+      return { backgroundColor: '#2E7D3233', color: COLORS.success, icon: 'checkmark-circle-outline' };
+  }
+}
+
 // ─── קומפוננטת כרטיס לקוחה ──────────────────────────────────────────────────
 function ClientCard({ client, onPress }) {
+  const automationStatus = client.automationStatus || {};
+  const automationAccent = getAutomationAccent(automationStatus.level);
+  const automationBadgeText = automationStatus.daysSinceClientActivity != null
+    ? `לא מגיבה ${automationStatus.daysSinceClientActivity} ימים`
+    : 'לא מגיבה';
   const initials = client.name
     .split(' ')
     .map(n => n[0])
@@ -66,6 +84,7 @@ function ClientCard({ client, onPress }) {
     client.pendingMeetingsCount ? `${client.pendingMeetingsCount} פגישות ממתינות` : null,
     client.unreadUpdatesCount ? `${client.unreadUpdatesCount} עדכונים חדשים` : null,
     client.isNewClient ? 'לקוחה חדשה' : null,
+    automationStatus.summaryText ? `מעקב אוטומטי ${automationStatus.summaryText}` : null,
   ]
     .filter(Boolean)
     .join(', ');
@@ -102,7 +121,24 @@ function ClientCard({ client, onPress }) {
             </View>
           ) : null}
           <Text style={styles.clientActionHint}>לחצי לעריכת חשבון, יעדים, תזונה ויומן אכילה</Text>
-          {(client.pendingMeetingsCount || client.unreadUpdatesCount || client.isNewClient) ? (
+          {automationStatus.isNonResponsive ? (
+            <View style={styles.clientAutomationRow}>
+              <Ionicons
+                name={automationAccent.icon}
+                size={14}
+                color={automationAccent.color}
+                style={styles.clientAutomationIcon}
+              />
+              <Text style={[styles.clientAutomationText, { color: automationAccent.color }]}>
+                {automationStatus.summaryText}
+              </Text>
+            </View>
+          ) : null}
+          {(client.pendingMeetingsCount
+            || client.unreadUpdatesCount
+            || client.isNewClient
+            || automationStatus.isNonResponsive
+            || automationStatus.reminder?.shouldSendNow) ? (
             <View style={styles.clientBadgesRow}>
               {client.pendingMeetingsCount ? (
                 <View style={[styles.clientBadge, styles.clientBadgePending]}>
@@ -121,6 +157,26 @@ function ClientCard({ client, onPress }) {
               {client.isNewClient ? (
                 <View style={[styles.clientBadge, styles.clientBadgeNew]}>
                   <Text style={[styles.clientBadgeText, styles.clientBadgeNewText]}>לקוחה חדשה</Text>
+                </View>
+              ) : null}
+              {automationStatus.isNonResponsive ? (
+                <View
+                  style={[
+                    styles.clientBadge,
+                    styles.clientBadgeAutomation,
+                    { backgroundColor: automationAccent.backgroundColor },
+                  ]}
+                >
+                  <Text style={[styles.clientBadgeText, { color: automationAccent.color }]}>
+                    {automationBadgeText}
+                  </Text>
+                </View>
+              ) : null}
+              {automationStatus.reminder?.shouldSendNow ? (
+                <View style={[styles.clientBadge, styles.clientBadgeReminder]}>
+                  <Text style={[styles.clientBadgeText, styles.clientBadgeReminderText]}>
+                    תזכורת מוכנה
+                  </Text>
                 </View>
               ) : null}
             </View>
@@ -363,6 +419,7 @@ const MEAL_CATEGORIES = [
 const CLIENT_FILTERS = [
   { id: 'all', label: 'הכל' },
   { id: 'attention', label: 'דורש טיפול' },
+  { id: 'nonResponsive', label: 'לא מגיבות' },
   { id: 'active', label: 'פעילות' },
   { id: 'inactive', label: 'לא פעילות' },
   { id: 'new', label: 'חדשות' },
@@ -765,22 +822,39 @@ export default function CoachDashboardScreen() {
       .map(client => {
         const clientUpdates = updatesByClient.get(client.id) || [];
         const clientMeetings = meetingsByClient.get(client.id) || [];
-        const unreadUpdatesCount = clientUpdates.filter(update => !update.readByCoach).length;
-        const pendingMeetingsCount = clientMeetings.filter(
-          meeting => meeting.status === 'ממתין לאישור'
-        ).length;
+        const automationStatus = client.automationStatus || {};
+        const unreadUpdatesCount =
+          automationStatus.unreadUpdatesCount ??
+          clientUpdates.filter(update => !update.readByCoach).length;
+        const pendingMeetingsCount =
+          automationStatus.pendingMeetingsCount ??
+          clientMeetings.filter(meeting => meeting.status === 'ממתין לאישור').length;
         const isNewClient = now - toTimestamp(client.createdAt) <= NEW_CLIENT_WINDOW_MS;
         const lastActivityAt = Math.max(
           toTimestamp(client.createdAt),
+          toTimestamp(automationStatus.activities?.lastClientActivityAt),
+          toTimestamp(automationStatus.activities?.lastCoachOutreachAt),
           ...clientUpdates.map(update => toTimestamp(update.createdAt || update.date)),
           ...clientMeetings.map(meeting =>
             toTimestamp(meeting.updatedAt || meeting.createdAt || meeting.requestedDate)
           )
         );
-        const requiresAttention = unreadUpdatesCount > 0 || pendingMeetingsCount > 0;
+        const requiresAttention =
+          unreadUpdatesCount > 0
+          || pendingMeetingsCount > 0
+          || Boolean(automationStatus.needsAttention);
+        const automationPriorityBoost =
+          automationStatus.level === 'urgent'
+            ? 60
+            : automationStatus.level === 'follow_up'
+              ? 30
+              : automationStatus.level === 'monitor'
+                ? 10
+                : 0;
 
         return {
           ...client,
+          automationStatus,
           unreadUpdatesCount,
           pendingMeetingsCount,
           isNewClient,
@@ -789,6 +863,8 @@ export default function CoachDashboardScreen() {
           priorityScore:
             pendingMeetingsCount * 100 +
             unreadUpdatesCount * 10 +
+            automationPriorityBoost +
+            (automationStatus.reminder?.shouldSendNow ? 12 : 0) +
             (isNewClient ? 5 : 0) +
             (client.isActive ? 1 : 0),
         };
@@ -814,6 +890,7 @@ export default function CoachDashboardScreen() {
     const counts = {
       all: prioritizedClients.length,
       attention: prioritizedClients.filter(client => client.requiresAttention).length,
+      nonResponsive: prioritizedClients.filter(client => client.automationStatus?.isNonResponsive).length,
       active: prioritizedClients.filter(client => client.isActive).length,
       inactive: prioritizedClients.filter(client => !client.isActive).length,
       new: prioritizedClients.filter(client => client.isNewClient).length,
@@ -872,6 +949,16 @@ export default function CoachDashboardScreen() {
     [prioritizedClients]
   );
 
+  const automationSummary = useMemo(
+    () => ({
+      overdue: prioritizedClients.filter(client => client.automationStatus?.isNonResponsive).length,
+      urgent: prioritizedClients.filter(client => client.automationStatus?.level === 'urgent').length,
+      reminders: prioritizedClients.filter(client => client.automationStatus?.reminder?.shouldSendNow)
+        .length,
+    }),
+    [prioritizedClients]
+  );
+
   const handleMeetingStatus = async (meetingId, status) => {
     try {
       await coachAPI.updateMeeting(meetingId, status);
@@ -901,6 +988,7 @@ export default function CoachDashboardScreen() {
     const matchesFilter =
       clientFilter === 'all' ||
       (clientFilter === 'attention' && client.requiresAttention) ||
+      (clientFilter === 'nonResponsive' && client.automationStatus?.isNonResponsive) ||
       (clientFilter === 'active' && client.isActive) ||
       (clientFilter === 'inactive' && !client.isActive) ||
       (clientFilter === 'new' && client.isNewClient);
@@ -1095,6 +1183,40 @@ export default function CoachDashboardScreen() {
                 </View>
               </View>
 
+              <View style={[styles.priorityCard, styles.automationPriorityCard]}>
+                <View style={styles.priorityRow}>
+                  <View style={styles.priorityMetric}>
+                    <Text style={[styles.priorityValue, styles.priorityValueDanger]}>
+                      {automationSummary.overdue}
+                    </Text>
+                    <Text style={styles.priorityLabel}>לקוחות לא מגיבות</Text>
+                  </View>
+                  <View style={styles.priorityDivider} />
+                  <View style={styles.priorityMetric}>
+                    <Text style={[styles.priorityValue, styles.priorityValueDanger]}>
+                      {automationSummary.urgent}
+                    </Text>
+                    <Text style={styles.priorityLabel}>מצבים דחופים</Text>
+                  </View>
+                  <View style={styles.priorityDivider} />
+                  <View style={styles.priorityMetric}>
+                    <Text style={[styles.priorityValue, styles.priorityValueWarning]}>
+                      {automationSummary.reminders}
+                    </Text>
+                    <Text style={styles.priorityLabel}>תזכורות מוכנות</Text>
+                  </View>
+                </View>
+              </View>
+
+              {automationSummary.overdue > 0 ? (
+                <View style={styles.sectionNoticeCard}>
+                  <Ionicons name="flash-outline" size={16} color={COLORS.warning} />
+                  <Text style={styles.sectionNoticeText}>
+                    {automationSummary.overdue} לקוחות מסומנות כלא מגיבות כרגע
+                  </Text>
+                </View>
+              ) : null}
+
               <ScrollView
                 horizontal
                 showsHorizontalScrollIndicator={false}
@@ -1190,7 +1312,7 @@ export default function CoachDashboardScreen() {
               ) : null}
 
               <Text style={styles.clientSortHint}>
-                לקוחות עם פגישות ממתינות ועדכונים חדשים מוצגות ראשונות.
+                לקוחות שלא מגיבות, עם פגישות ממתינות ועדכונים חדשים מוצגות ראשונות.
               </Text>
 
               <View style={styles.searchWrapper}>
@@ -1522,6 +1644,7 @@ export default function CoachDashboardScreen() {
   );
 }
 
+/* eslint-disable react-native/sort-styles */
 const styles = StyleSheet.create({
   addBtn: {
     alignItems: 'center',
@@ -1544,6 +1667,21 @@ const styles = StyleSheet.create({
   },
   cancelBtnText: { color: COLORS.textSecondary, fontSize: 15 },
   clientActionHint: { color: COLORS.primary, fontSize: 11, marginTop: 6, textAlign: 'right' },
+  clientAutomationIcon: {
+    marginTop: 1,
+  },
+  clientAutomationRow: {
+    alignItems: 'flex-start',
+    flexDirection: 'row-reverse',
+    gap: 6,
+    marginTop: 8,
+  },
+  clientAutomationText: {
+    flex: 1,
+    fontSize: 11,
+    lineHeight: 17,
+    textAlign: 'right',
+  },
   clientAvatar: {
     alignItems: 'center',
     backgroundColor: COLORS.primary + '33',
@@ -1566,13 +1704,13 @@ const styles = StyleSheet.create({
     marginBottom: 10,
     padding: 14,
   },
-  clientCardPriority: {
-    borderColor: COLORS.primary + '66',
-  },
   clientBadge: {
     borderRadius: 999,
     paddingHorizontal: 8,
     paddingVertical: 4,
+  },
+  clientCardPriority: {
+    borderColor: COLORS.primary + '66',
   },
   clientBadgeNew: { backgroundColor: '#2E7D3233' },
   clientBadgeNewText: { color: COLORS.success },
@@ -1582,9 +1720,14 @@ const styles = StyleSheet.create({
     marginTop: 6,
   },
   clientCoachStatusText: { color: COLORS.accent },
+  clientBadgeAutomation: {
+    borderWidth: 1,
+  },
   clientBadgePending: { backgroundColor: '#E6510033' },
   clientBadgePendingText: { color: '#FFA726' },
   clientBadgeText: { fontSize: 10, fontWeight: '700' },
+  clientBadgeReminder: { backgroundColor: `${COLORS.primary}22` },
+  clientBadgeReminderText: { color: COLORS.primary },
   clientTagBadge: { backgroundColor: `${COLORS.info}22` },
   clientTagBadgeText: { color: COLORS.info },
   clientBadgeUnread: { backgroundColor: '#1565C033' },
@@ -1757,9 +1900,9 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     borderTopWidth: 1,
-    padding: 24,
     flexShrink: 1,
     maxHeight: '88%',
+    padding: 24,
   },
   modalSub: { color: COLORS.textSecondary, fontSize: 13, marginBottom: 20, textAlign: 'center' },
   modalTitle: {
@@ -1777,6 +1920,9 @@ const styles = StyleSheet.create({
     marginBottom: 12,
     padding: 14,
   },
+  automationPriorityCard: {
+    borderColor: `${COLORS.warning}44`,
+  },
   priorityDivider: { backgroundColor: COLORS.border, height: 34, width: 1 },
   priorityLabel: {
     color: COLORS.textSecondary,
@@ -1787,6 +1933,8 @@ const styles = StyleSheet.create({
   priorityMetric: { alignItems: 'center', flex: 1 },
   priorityRow: { alignItems: 'center', flexDirection: 'row', gap: 10 },
   priorityValue: { color: COLORS.white, fontSize: 22, fontWeight: '700' },
+  priorityValueDanger: { color: COLORS.danger },
+  priorityValueWarning: { color: COLORS.warning },
   rejectBtn: { backgroundColor: COLORS.card, borderColor: '#B71C1C', borderWidth: 1 },
   rejectBtnText: { color: '#F44336', fontSize: 14, fontWeight: '600' },
   safe: { backgroundColor: COLORS.background, flex: 1 },
@@ -2044,3 +2192,4 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
 });
+/* eslint-enable react-native/sort-styles */

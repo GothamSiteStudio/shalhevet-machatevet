@@ -57,6 +57,55 @@ function makeId(prefix) {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
 }
 
+function formatAutomationDate(value) {
+  if (!value) return '—';
+  return String(value).split('T')[0] || '—';
+}
+
+function formatAutomationDaysAgo(days) {
+  if (days === null || days === undefined) return '—';
+  if (days <= 0) return 'היום';
+  if (days === 1) return 'לפני יום';
+  return `לפני ${days} ימים`;
+}
+
+function getAutomationMeta(level) {
+  switch (level) {
+    case 'urgent':
+      return {
+        label: 'דורשת טיפול דחוף',
+        color: COLORS.danger,
+        backgroundColor: '#B71C1C22',
+        borderColor: '#B71C1C44',
+        icon: 'alert-circle-outline',
+      };
+    case 'follow_up':
+      return {
+        label: 'נדרשת תזכורת',
+        color: COLORS.warning,
+        backgroundColor: '#E6510022',
+        borderColor: '#E6510044',
+        icon: 'flash-outline',
+      };
+    case 'monitor':
+      return {
+        label: 'במעקב',
+        color: COLORS.info,
+        backgroundColor: '#1565C022',
+        borderColor: '#1565C044',
+        icon: 'eye-outline',
+      };
+    default:
+      return {
+        label: 'במסלול',
+        color: COLORS.success,
+        backgroundColor: '#2E7D3222',
+        borderColor: '#2E7D3244',
+        icon: 'checkmark-circle-outline',
+      };
+  }
+}
+
 function toInputValue(value) {
   return value === undefined || value === null ? '' : String(value);
 }
@@ -666,6 +715,7 @@ export default function CoachClientPlansModal({ visible, clientId, onClose, onSa
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [foodDiarySaving, setFoodDiarySaving] = useState(false);
+  const [sendingAutomationReminder, setSendingAutomationReminder] = useState(false);
   const [client, setClient] = useState(null);
   const [accountForm, setAccountForm] = useState(createEmptyAccountForm());
   const [goalsForm, setGoalsForm] = useState(createEmptyGoalsForm());
@@ -702,6 +752,7 @@ export default function CoachClientPlansModal({ visible, clientId, onClose, onSa
     setFoodDiaryEntries([]);
     setFoodDiaryEditorVisible(false);
     setEditingFoodDiaryEntry(null);
+    setSendingAutomationReminder(false);
   }, []);
 
   const queryMatchedRecipes = RECIPE_CATALOG.filter(recipe => {
@@ -976,6 +1027,29 @@ export default function CoachClientPlansModal({ visible, clientId, onClose, onSa
       Alert.alert('שגיאה', err.message || 'לא ניתן לשמור את יומן האכילה');
     } finally {
       setFoodDiarySaving(false);
+    }
+  };
+
+  const handleSendAutomationReminder = async () => {
+    if (!clientId) return;
+
+    setSendingAutomationReminder(true);
+    try {
+      const result = await coachAPI.sendAutomationReminder(clientId);
+      setClient(current =>
+        current
+          ? {
+              ...current,
+              automationStatus: result.automationStatus || current.automationStatus,
+            }
+          : current
+      );
+      Alert.alert('✅ נשלח', result.message || 'נשלחה תזכורת אוטומטית ללקוחה');
+      if (onSaved) onSaved();
+    } catch (err) {
+      Alert.alert('שגיאה', err.message || 'לא ניתן לשלוח תזכורת כרגע');
+    } finally {
+      setSendingAutomationReminder(false);
     }
   };
 
@@ -1428,6 +1502,137 @@ export default function CoachClientPlansModal({ visible, clientId, onClose, onSa
             האימייל החדש.
           </Text>
         </View>
+      </SectionCard>
+
+      <SectionCard
+        title="מעקב אוטומטי"
+        subtitle="התראות על לקוחה שלא מגיבה והצעת תזכורת מהירה מתוך האפליקציה"
+        icon="flash-outline"
+      >
+        {(() => {
+          const automationStatus = client?.automationStatus || {};
+          const automationMeta = getAutomationMeta(automationStatus.level);
+          const reminderLocked =
+            !automationStatus.reminder?.shouldSendNow && automationStatus.reminder?.lastSentAt;
+
+          return (
+            <>
+              <View style={styles.summaryChipsRow}>
+                <SummaryChip
+                  label="סטטוס"
+                  value={automationStatus.statusLabel || automationMeta.label}
+                  color={automationMeta.color}
+                />
+                <SummaryChip
+                  label="פעילות אחרונה"
+                  value={formatAutomationDaysAgo(automationStatus.daysSinceClientActivity)}
+                  color={automationMeta.color}
+                />
+                <SummaryChip
+                  label="תזכורת אחרונה"
+                  value={formatAutomationDate(automationStatus.reminder?.lastSentAt)}
+                  color={COLORS.info}
+                />
+              </View>
+
+              <View
+                style={[
+                  styles.automationBanner,
+                  {
+                    backgroundColor: automationMeta.backgroundColor,
+                    borderColor: automationMeta.borderColor,
+                  },
+                ]}
+              >
+                <Ionicons name={automationMeta.icon} size={18} color={automationMeta.color} />
+                <View style={styles.automationBannerContent}>
+                  <Text style={[styles.automationBannerTitle, { color: automationMeta.color }]}>
+                    {automationStatus.statusLabel || automationMeta.label}
+                  </Text>
+                  <Text style={styles.automationBannerText}>
+                    {automationStatus.summaryText || 'אין כרגע התראות אוטומטיות על הלקוחה הזו.'}
+                  </Text>
+                </View>
+              </View>
+
+              {Array.isArray(automationStatus.reasons) && automationStatus.reasons.length > 0 ? (
+                <View style={styles.automationReasonsList}>
+                  {automationStatus.reasons.map(reason => (
+                    <View key={reason.id} style={styles.automationReasonRow}>
+                      <Ionicons
+                        name={reason.severity === 'high' ? 'alert-circle' : 'ellipse'}
+                        size={12}
+                        color={reason.severity === 'high' ? COLORS.danger : COLORS.warning}
+                      />
+                      <Text style={styles.automationReasonText}>{reason.label}</Text>
+                    </View>
+                  ))}
+                </View>
+              ) : (
+                <Text style={styles.helperText}>
+                  אין כרגע סימנים ללקוחה שלא מגיבה. אם זה ישתנה, תופיע כאן תזכורת מוכנה.
+                </Text>
+              )}
+
+              <View style={styles.summaryChipsRow}>
+                <SummaryChip
+                  label="צ׳ק-אין"
+                  value={formatAutomationDate(automationStatus.activities?.lastCheckInAt)}
+                  color={COLORS.info}
+                />
+                <SummaryChip
+                  label="הרגלים"
+                  value={formatAutomationDate(automationStatus.activities?.lastHabitLogAt)}
+                  color={COLORS.accent}
+                />
+                <SummaryChip
+                  label="שקילה"
+                  value={formatAutomationDate(automationStatus.activities?.lastWeightEntryAt)}
+                  color={COLORS.primary}
+                />
+              </View>
+
+              {automationStatus.reminder?.suggestedText ? (
+                <View style={styles.automationReminderPreview}>
+                  <Text style={styles.automationReminderPreviewLabel}>נוסח התזכורת</Text>
+                  <Text style={styles.automationReminderPreviewText}>
+                    {automationStatus.reminder.suggestedText}
+                  </Text>
+                </View>
+              ) : null}
+
+              <TouchableOpacity
+                style={[
+                  styles.automationReminderBtn,
+                  (!automationStatus.reminder?.shouldSendNow || sendingAutomationReminder)
+                    && styles.automationReminderBtnDisabled,
+                ]}
+                onPress={handleSendAutomationReminder}
+                disabled={!automationStatus.reminder?.shouldSendNow || sendingAutomationReminder}
+              >
+                {sendingAutomationReminder ? (
+                  <ActivityIndicator color={COLORS.white} />
+                ) : (
+                  <>
+                    <Ionicons name="send-outline" size={16} color={COLORS.white} />
+                    <Text style={styles.automationReminderBtnText}>
+                      {automationStatus.reminder?.shouldSendNow
+                        ? 'שלחי תזכורת אוטומטית'
+                        : 'אין צורך בתזכורת כרגע'}
+                    </Text>
+                  </>
+                )}
+              </TouchableOpacity>
+
+              {reminderLocked ? (
+                <Text style={styles.helperText}>
+                  כבר נשלחה תזכורת אוטומטית לאחרונה. אפשר לנסות שוב בעוד{' '}
+                  {automationStatus.reminder?.cooldownHoursRemaining || 0} שעות.
+                </Text>
+              ) : null}
+            </>
+          );
+        })()}
       </SectionCard>
 
       <SectionCard
@@ -2728,6 +2933,7 @@ export default function CoachClientPlansModal({ visible, clientId, onClose, onSa
   );
 }
 
+/* eslint-disable react-native/sort-styles */
 const styles = StyleSheet.create({
   accountInfoBox: {
     alignItems: 'flex-start',
@@ -2780,6 +2986,85 @@ const styles = StyleSheet.create({
   accountStatusRow: {
     flexDirection: 'row-reverse',
     gap: 10,
+  },
+  automationBanner: {
+    alignItems: 'flex-start',
+    borderRadius: 14,
+    borderWidth: 1,
+    flexDirection: 'row-reverse',
+    gap: 10,
+    marginTop: 12,
+    padding: 12,
+  },
+  automationBannerContent: {
+    flex: 1,
+  },
+  automationBannerText: {
+    color: COLORS.textSecondary,
+    fontSize: 12,
+    lineHeight: 18,
+    marginTop: 4,
+    textAlign: 'right',
+  },
+  automationBannerTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    textAlign: 'right',
+  },
+  automationReasonRow: {
+    alignItems: 'flex-start',
+    flexDirection: 'row-reverse',
+    gap: 8,
+  },
+  automationReasonText: {
+    color: COLORS.white,
+    flex: 1,
+    fontSize: 12,
+    lineHeight: 18,
+    textAlign: 'right',
+  },
+  automationReasonsList: {
+    gap: 8,
+    marginTop: 12,
+  },
+  automationReminderBtn: {
+    alignItems: 'center',
+    backgroundColor: COLORS.primary,
+    borderRadius: 12,
+    flexDirection: 'row-reverse',
+    gap: 8,
+    justifyContent: 'center',
+    marginTop: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+  },
+  automationReminderBtnDisabled: {
+    backgroundColor: COLORS.borderLight,
+  },
+  automationReminderBtnText: {
+    color: COLORS.white,
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  automationReminderPreview: {
+    backgroundColor: COLORS.card,
+    borderColor: COLORS.border,
+    borderRadius: 12,
+    borderWidth: 1,
+    marginTop: 12,
+    padding: 12,
+  },
+  automationReminderPreviewLabel: {
+    color: COLORS.textSecondary,
+    fontSize: 11,
+    marginBottom: 6,
+    textAlign: 'right',
+  },
+  automationReminderPreviewText: {
+    color: COLORS.white,
+    fontSize: 12,
+    lineHeight: 19,
+    textAlign: 'right',
   },
   cancelBtn: {
     alignItems: 'center',
@@ -3422,3 +3707,4 @@ const styles = StyleSheet.create({
     gap: 10,
   },
 });
+/* eslint-enable react-native/sort-styles */

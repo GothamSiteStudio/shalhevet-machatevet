@@ -125,6 +125,7 @@ export const coachAPI = {
   // לקוחות
   getClients: () => apiRequest('GET', '/coach/clients'),
   getClient: id => apiRequest('GET', `/coach/clients/${id}`),
+  sendAutomationReminder: id => apiRequest('POST', `/coach/clients/${id}/automation-reminder`),
   getClientPlans: id => apiRequest('GET', `/coach/clients/${id}/plans`),
   updateClient: (id, data) => apiRequest('PUT', `/coach/clients/${id}`, data),
   addClient: data => apiRequest('POST', '/coach/clients', data),

@@ -3,6 +3,7 @@
  * ===============================================
  * GET  /api/coach/clients         - כל הלקוחות
  * GET  /api/coach/clients/:id     - פרטי לקוחה ספציפית
+ * POST /api/coach/clients/:id/automation-reminder - שלח תזכורת מעקב אוטומטית
  * PUT  /api/coach/clients/:id     - עדכון פרטי לקוחה
  * POST /api/coach/clients         - הוספת לקוחה ידנית
  * GET  /api/coach/updates         - כל העדכונים מהלקוחות
@@ -46,7 +47,8 @@ const {
   addMessage,
   listFoodDiaryEntries,
   saveFoodDiaryEntry,
-    getLatestCheckInEntry,
+  getLatestCheckInEntry,
+  getClientEngagementOverview,
   getAllCoachMeals,
   getCoachMealById,
   createCoachMeal,
@@ -74,6 +76,20 @@ const CHECK_IN_QUESTION_TYPES = new Set([
   "yesNo",
   "scale",
 ]);
+const MS_IN_DAY = 24 * 60 * 60 * 1000;
+const MS_IN_HOUR = 60 * 60 * 1000;
+const AUTOMATION_THRESHOLDS = Object.freeze({
+  firstActivityGraceDays: 3,
+  generalFollowUpDays: 7,
+  generalUrgentDays: 14,
+  checkInFollowUpDays: 8,
+  checkInUrgentDays: 15,
+  habitFollowUpDays: 4,
+  habitUrgentDays: 7,
+  postReminderFollowUpDays: 2,
+  postReminderUrgentDays: 4,
+  reminderCooldownHours: 24,
+});
 
 function isValidDateKey(value) {
   return /^\d{4}-\d{2}-\d{2}$/.test(String(value || "").trim());
@@ -88,6 +104,296 @@ function createBadRequest(message) {
 async function getClientOrNull(userId) {
   const user = await getUserById(userId);
   return user && user.role === "client" ? user : null;
+}
+
+function toTimestamp(value) {
+  if (!value) return 0;
+  const timestamp = new Date(value).getTime();
+  return Number.isFinite(timestamp) ? timestamp : 0;
+}
+
+function getDaysSince(value, nowTimestamp = Date.now()) {
+  const timestamp = toTimestamp(value);
+  if (!timestamp) return null;
+  return Math.max(0, Math.floor((nowTimestamp - timestamp) / MS_IN_DAY));
+}
+
+function formatDaysAgo(days) {
+  if (days === null || days === undefined) return null;
+  if (days <= 0) return "היום";
+  if (days === 1) return "לפני יום";
+  return `לפני ${days} ימים`;
+}
+
+function getFirstName(name) {
+  return String(name || "").trim().split(/\s+/)[0] || "יקרה";
+}
+
+function getMostRecentSignal(signals = []) {
+  return signals
+    .filter((signal) => toTimestamp(signal?.occurredAt))
+    .sort((left, right) => toTimestamp(right.occurredAt) - toTimestamp(left.occurredAt))[0] || null;
+}
+
+function createAutomationReason(id, label, severity = "medium") {
+  return { id, label, severity };
+}
+
+function getAutomationStatusLabel(level) {
+  switch (level) {
+    case "urgent":
+      return "דורשת טיפול דחוף";
+    case "follow_up":
+      return "נדרשת תזכורת";
+    case "monitor":
+      return "במעקב";
+    default:
+      return "במסלול";
+  }
+}
+
+function getAutomationLevel(reasons, hasCoachQueueAttention) {
+  if (reasons.some((reason) => reason.severity === "high")) {
+    return "urgent";
+  }
+
+  if (reasons.length > 0) {
+    return "follow_up";
+  }
+
+  if (hasCoachQueueAttention) {
+    return "monitor";
+  }
+
+  return "clear";
+}
+
+function buildCoachQueueSummary(unreadUpdatesCount, pendingMeetingsCount) {
+  if (unreadUpdatesCount > 0 && pendingMeetingsCount > 0) {
+    return `${unreadUpdatesCount} עדכונים ו-${pendingMeetingsCount} פגישות מחכים למעבר שלך`;
+  }
+
+  if (unreadUpdatesCount > 0) {
+    return `${unreadUpdatesCount} עדכונים חדשים מחכים למעבר שלך`;
+  }
+
+  if (pendingMeetingsCount > 0) {
+    return `${pendingMeetingsCount} פגישות מחכות לאישור שלך`;
+  }
+
+  return null;
+}
+
+function buildSuggestedReminderText(client, context = {}) {
+  const firstName = getFirstName(client?.name);
+  const nudges = [];
+
+  if (context.afterCoachReminder) {
+    nudges.push("רציתי לוודא שההודעה האחרונה שלי הגיעה אלייך");
+  }
+
+  if (context.checkInOverdue) {
+    nudges.push("עדיין לא קיבלתי ממך צ׳ק-אין שבועי");
+  }
+
+  if (context.habitOverdue) {
+    nudges.push("לא ראיתי סימון של ההרגלים האחרונים");
+  }
+
+  if (context.activityOverdue) {
+    nudges.push("לא התקבל ממך עדכון בימים האחרונים");
+  }
+
+  const reminderBody = nudges.length > 0
+    ? `${nudges.join(" ו")}. אם משהו נתקע או שצריך התאמה, כתבי לי כאן ואעזור.`
+    : "רציתי לבדוק מה שלומך ואם יש משהו שצריך לחדד או להתאים בתהליך.";
+
+  return `היי ${firstName}, ${reminderBody}`;
+}
+
+function buildAutomationStatus(client, overview = {}, nowTimestamp = Date.now()) {
+  const unreadUpdatesCount = Number(overview.unreadUpdatesCount) || 0;
+  const pendingMeetingsCount = Number(overview.pendingMeetingsCount) || 0;
+  const activeHabitsCount = Array.isArray(client?.habitAssignments)
+    ? client.habitAssignments.filter((habit) => habit?.isActive !== false).length
+    : 0;
+  const hasCheckInTemplate = Array.isArray(client?.checkInTemplate?.questions)
+    && client.checkInTemplate.questions.length > 0;
+  const trackingStartAt = client?.updatedAt || client?.createdAt || null;
+
+  const clientSignals = [
+    { type: "update", label: "עדכון שבועי", occurredAt: overview.lastUpdateAt },
+    { type: "meeting", label: "בקשת פגישה", occurredAt: overview.lastMeetingAt },
+    { type: "message", label: "הודעת לקוחה", occurredAt: overview.lastClientMessageAt },
+    { type: "checkin", label: "צ׳ק-אין", occurredAt: overview.lastCheckInAt },
+    { type: "habit", label: "סימון הרגלים", occurredAt: overview.lastHabitLogAt },
+    { type: "weight", label: "שקילה", occurredAt: overview.lastWeightEntryAt },
+  ];
+
+  const lastClientActivity = getMostRecentSignal(clientSignals);
+  const accountAgeDays = getDaysSince(client?.createdAt, nowTimestamp);
+  const trackingAgeDays = getDaysSince(trackingStartAt, nowTimestamp);
+  const daysSinceClientActivity = lastClientActivity
+    ? getDaysSince(lastClientActivity.occurredAt, nowTimestamp)
+    : accountAgeDays;
+  const daysSinceCheckIn = getDaysSince(overview.lastCheckInAt, nowTimestamp);
+  const daysSinceHabitLog = getDaysSince(overview.lastHabitLogAt, nowTimestamp);
+  const daysSinceCoachOutreach = getDaysSince(overview.lastCoachMessageAt, nowTimestamp);
+  const hasRespondedToLastCoachMessage = overview.lastCoachMessageAt
+    ? toTimestamp(lastClientActivity?.occurredAt) > toTimestamp(overview.lastCoachMessageAt)
+    : null;
+
+  const reasons = [];
+  const reminderContext = {
+    activityOverdue: false,
+    checkInOverdue: false,
+    habitOverdue: false,
+    afterCoachReminder: false,
+  };
+
+  if (!lastClientActivity && accountAgeDays !== null && accountAgeDays >= AUTOMATION_THRESHOLDS.firstActivityGraceDays) {
+    reasons.push(
+      createAutomationReason(
+        "no-first-response",
+        `הלקוחה הצטרפה לפני ${accountAgeDays} ימים ועדיין לא התקבלה ממנה פעילות`,
+        accountAgeDays >= AUTOMATION_THRESHOLDS.generalFollowUpDays ? "high" : "medium",
+      ),
+    );
+    reminderContext.activityOverdue = true;
+  } else if (
+    lastClientActivity
+    && daysSinceClientActivity !== null
+    && daysSinceClientActivity >= AUTOMATION_THRESHOLDS.generalFollowUpDays
+  ) {
+    reasons.push(
+      createAutomationReason(
+        "stale-activity",
+        `אין פעילות מצד הלקוחה כבר ${daysSinceClientActivity} ימים`,
+        daysSinceClientActivity >= AUTOMATION_THRESHOLDS.generalUrgentDays ? "high" : "medium",
+      ),
+    );
+    reminderContext.activityOverdue = true;
+  }
+
+  if (hasCheckInTemplate) {
+    const checkInBaselineDays = daysSinceCheckIn ?? trackingAgeDays;
+
+    if (
+      checkInBaselineDays !== null
+      && checkInBaselineDays >= AUTOMATION_THRESHOLDS.checkInFollowUpDays
+    ) {
+      reasons.push(
+        createAutomationReason(
+          "checkin-overdue",
+          overview.lastCheckInAt
+            ? `לא נשלח צ׳ק-אין כבר ${checkInBaselineDays} ימים`
+            : `הוגדר צ׳ק-אין ועדיין לא נשלחה ממנו תגובה כבר ${checkInBaselineDays} ימים`,
+          checkInBaselineDays >= AUTOMATION_THRESHOLDS.checkInUrgentDays ? "high" : "medium",
+        ),
+      );
+      reminderContext.checkInOverdue = true;
+    }
+  }
+
+  if (activeHabitsCount > 0) {
+    const habitBaselineDays = daysSinceHabitLog ?? trackingAgeDays;
+
+    if (
+      habitBaselineDays !== null
+      && habitBaselineDays >= AUTOMATION_THRESHOLDS.habitFollowUpDays
+    ) {
+      reasons.push(
+        createAutomationReason(
+          "habit-overdue",
+          overview.lastHabitLogAt
+            ? `לא סומנו הרגלים כבר ${habitBaselineDays} ימים`
+            : `הוגדרו ${activeHabitsCount} הרגלים ועדיין אין סימון כבר ${habitBaselineDays} ימים`,
+          habitBaselineDays >= AUTOMATION_THRESHOLDS.habitUrgentDays ? "high" : "medium",
+        ),
+      );
+      reminderContext.habitOverdue = true;
+    }
+  }
+
+  if (
+    overview.lastCoachMessageAt
+    && hasRespondedToLastCoachMessage === false
+    && daysSinceCoachOutreach !== null
+    && daysSinceCoachOutreach >= AUTOMATION_THRESHOLDS.postReminderFollowUpDays
+  ) {
+    reasons.push(
+      createAutomationReason(
+        "post-reminder-no-response",
+        `נשלחה הודעת מעקב לפני ${daysSinceCoachOutreach} ימים ועדיין אין תגובה`,
+        daysSinceCoachOutreach >= AUTOMATION_THRESHOLDS.postReminderUrgentDays ? "high" : "medium",
+      ),
+    );
+    reminderContext.afterCoachReminder = true;
+  }
+
+  const hasCoachQueueAttention = unreadUpdatesCount > 0 || pendingMeetingsCount > 0;
+  const level = getAutomationLevel(reasons, hasCoachQueueAttention);
+  const cooldownMsRemaining = overview.lastCoachMessageAt
+    ? Math.max(
+        0,
+        AUTOMATION_THRESHOLDS.reminderCooldownHours * MS_IN_HOUR
+          - (nowTimestamp - toTimestamp(overview.lastCoachMessageAt)),
+      )
+    : 0;
+  const queueSummary = buildCoachQueueSummary(unreadUpdatesCount, pendingMeetingsCount);
+  const isNonResponsive = reasons.length > 0;
+
+  return {
+    level,
+    statusLabel: getAutomationStatusLabel(level),
+    needsAttention: hasCoachQueueAttention || isNonResponsive,
+    isNonResponsive,
+    summaryText:
+      reasons[0]?.label
+      || queueSummary
+      || (lastClientActivity
+        ? `פעילות אחרונה: ${lastClientActivity.label} ${formatDaysAgo(daysSinceClientActivity)}`
+        : "עדיין לא התקבלה פעילות מצד הלקוחה"),
+    unreadUpdatesCount,
+    pendingMeetingsCount,
+    activeHabitsCount,
+    hasCheckInTemplate,
+    daysSinceClientActivity,
+    daysSinceCheckIn,
+    daysSinceHabitLog,
+    daysSinceCoachOutreach,
+    hasRespondedToLastCoachMessage,
+    reasons,
+    activities: {
+      lastClientActivityAt: lastClientActivity?.occurredAt || null,
+      lastClientActivityType: lastClientActivity?.type || null,
+      lastClientActivityLabel: lastClientActivity?.label || null,
+      lastCoachOutreachAt: overview.lastCoachMessageAt || null,
+      lastCheckInAt: overview.lastCheckInAt || null,
+      lastHabitLogAt: overview.lastHabitLogAt || null,
+      lastWeightEntryAt: overview.lastWeightEntryAt || null,
+      lastUpdateAt: overview.lastUpdateAt || null,
+      lastMeetingAt: overview.lastMeetingAt || null,
+      lastClientMessageAt: overview.lastClientMessageAt || null,
+    },
+    reminder: {
+      shouldSendNow: isNonResponsive && cooldownMsRemaining === 0,
+      cooldownHoursRemaining:
+        cooldownMsRemaining > 0 ? Math.ceil(cooldownMsRemaining / MS_IN_HOUR) : 0,
+      lastSentAt: overview.lastCoachMessageAt || null,
+      suggestedText: isNonResponsive ? buildSuggestedReminderText(client, reminderContext) : "",
+      recommendedChannel: "message",
+    },
+  };
+}
+
+function attachAutomationStatusToClient(client, engagementOverviewMap, nowTimestamp = Date.now()) {
+  if (!client) return null;
+
+  return {
+    ...client,
+    automationStatus: buildAutomationStatus(client, engagementOverviewMap?.[client.id], nowTimestamp),
+  };
 }
 
 function parseOptionalNumber(value, fieldName) {
@@ -515,9 +821,15 @@ router.get(
   "/clients",
   asyncHandler(async (req, res) => {
     const allUsers = await getAllUsers();
-    const clients = allUsers
+    const nowTimestamp = Date.now();
+    const rawClients = allUsers
       .filter((u) => u.role === "client")
-      .map(({ password, ...safe }) => safe) // מסיר סיסמאות
+      .map(({ password, ...safe }) => safe);
+    const engagementOverviewMap = await getClientEngagementOverview(
+      rawClients.map((client) => client.id),
+    );
+    const clients = rawClients
+      .map((client) => attachAutomationStatusToClient(client, engagementOverviewMap, nowTimestamp))
       .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
 
     res.json({
@@ -550,6 +862,7 @@ router.get(
       nutritionPlan,
       workoutPlan,
       latestCheckInEntry,
+      engagementOverviewMap,
     ] = await Promise.all([
       getWeightHistory(user.id),
       getUpdates(user.id),
@@ -561,11 +874,13 @@ router.get(
       getNutritionPlan(user.id),
       getWorkoutPlan(user.id),
       getLatestCheckInEntry(user.id),
+      getClientEngagementOverview([user.id]),
     ]);
+    const client = attachAutomationStatusToClient(safe, engagementOverviewMap);
 
     res.json({
       success: true,
-      client: safe,
+      client,
       weightHistory,
       updates,
       meetings,
@@ -576,6 +891,45 @@ router.get(
       nutritionPlan,
       workoutPlan,
       latestCheckInEntry,
+    });
+  }),
+);
+
+router.post(
+  "/clients/:id/automation-reminder",
+  asyncHandler(async (req, res) => {
+    const client = await getClientOrNull(req.params.id);
+
+    if (!client) {
+      return res.status(404).json({ error: "לקוחה לא נמצאה" });
+    }
+
+    const engagementOverviewMap = await getClientEngagementOverview([client.id]);
+    const automationStatus = buildAutomationStatus(client, engagementOverviewMap[client.id]);
+
+    if (!automationStatus.isNonResponsive) {
+      return res.status(400).json({ error: "כרגע אין צורך בתזכורת אוטומטית ללקוחה הזו" });
+    }
+
+    if (!automationStatus.reminder.shouldSendNow) {
+      return res.status(400).json({
+        error: `כבר נשלחה הודעת מעקב לאחרונה. אפשר לנסות שוב בעוד ${automationStatus.reminder.cooldownHoursRemaining} שעות.`,
+      });
+    }
+
+    const message = await addMessage(
+      req.user.id,
+      client.id,
+      automationStatus.reminder.suggestedText,
+      "coach",
+    );
+    const refreshedOverviewMap = await getClientEngagementOverview([client.id]);
+
+    res.json({
+      success: true,
+      message: `נשלחה תזכורת מעקב ל${client.name}`,
+      data: message,
+      automationStatus: buildAutomationStatus(client, refreshedOverviewMap[client.id]),
     });
   }),
 );
@@ -1079,6 +1433,12 @@ router.get(
     ]);
 
     const clients = allUsers.filter((u) => u.role === "client");
+    const engagementOverviewMap = await getClientEngagementOverview(
+      clients.map((client) => client.id),
+    );
+    const automationStatuses = clients.map((client) =>
+      buildAutomationStatus(client, engagementOverviewMap[client.id]),
+    );
     const activeClients = clients.filter((u) => u.isActive);
     const pendingMeetings = meetings.filter((m) => m.status === "ממתין לאישור");
     const unreadUpdates = updates.filter((u) => !u.readByCoach);
@@ -1093,6 +1453,11 @@ router.get(
         totalUpdates: updates.length,
         totalMeetings: meetings.length,
         totalMessages: messages.length,
+        nonResponsiveClients: automationStatuses.filter((status) => status.isNonResponsive).length,
+        urgentAutomationClients: automationStatuses.filter((status) => status.level === "urgent").length,
+        readyAutomationReminders: automationStatuses.filter(
+          (status) => status.reminder.shouldSendNow,
+        ).length,
       },
     });
   }),

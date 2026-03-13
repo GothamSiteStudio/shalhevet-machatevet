@@ -1244,6 +1244,168 @@ async function saveHabitLog(userId, habitId, logDate, completed) {
   return mapHabitLog(result.rows[0]);
 }
 
+function createEmptyClientEngagementOverview() {
+  return {
+    unreadUpdatesCount: 0,
+    pendingMeetingsCount: 0,
+    lastUpdateAt: null,
+    lastMeetingAt: null,
+    lastClientMessageAt: null,
+    lastCoachMessageAt: null,
+    lastCheckInAt: null,
+    lastHabitLogAt: null,
+    lastWeightEntryAt: null,
+  };
+}
+
+function buildUserIdPlaceholders(userIds) {
+  return userIds.map((_, index) => `$${index + 1}`).join(", ");
+}
+
+async function getClientEngagementOverview(userIds = []) {
+  const normalizedUserIds = [...new Set(
+    (Array.isArray(userIds) ? userIds : [userIds])
+      .map((userId) => String(userId || "").trim())
+      .filter(Boolean),
+  )];
+
+  if (normalizedUserIds.length === 0) {
+    return {};
+  }
+
+  const placeholders = buildUserIdPlaceholders(normalizedUserIds);
+  const baseOverview = Object.fromEntries(
+    normalizedUserIds.map((userId) => [
+      userId,
+      createEmptyClientEngagementOverview(),
+    ]),
+  );
+
+  const [updatesResult, meetingsResult, messagesResult, checkInsResult, habitLogsResult, weightResult] =
+    await Promise.all([
+      query(
+        `
+          SELECT
+            user_id,
+            COUNT(*) FILTER (WHERE read_by_coach = false)::int AS unread_updates_count,
+            MAX(created_at) AS last_update_at
+          FROM updates
+          WHERE user_id IN (${placeholders})
+          GROUP BY user_id
+        `,
+        normalizedUserIds,
+      ),
+      query(
+        `
+          SELECT
+            user_id,
+            COUNT(*) FILTER (WHERE status = 'ממתין לאישור')::int AS pending_meetings_count,
+            MAX(created_at) AS last_meeting_at
+          FROM meetings
+          WHERE user_id IN (${placeholders})
+          GROUP BY user_id
+        `,
+        normalizedUserIds,
+      ),
+      query(
+        `
+          SELECT
+            user_id,
+            MAX(created_at) FILTER (WHERE from_role = 'client') AS last_client_message_at,
+            MAX(created_at) FILTER (WHERE from_role = 'coach') AS last_coach_message_at
+          FROM messages
+          WHERE user_id IN (${placeholders})
+          GROUP BY user_id
+        `,
+        normalizedUserIds,
+      ),
+      query(
+        `
+          SELECT user_id, MAX(submitted_at) AS last_check_in_at
+          FROM check_in_entries
+          WHERE user_id IN (${placeholders})
+          GROUP BY user_id
+        `,
+        normalizedUserIds,
+      ),
+      query(
+        `
+          SELECT user_id, MAX(updated_at) AS last_habit_log_at
+          FROM habit_logs
+          WHERE user_id IN (${placeholders})
+          GROUP BY user_id
+        `,
+        normalizedUserIds,
+      ),
+      query(
+        `
+          SELECT user_id, MAX(created_at) AS last_weight_entry_at
+          FROM weight_history
+          WHERE user_id IN (${placeholders})
+          GROUP BY user_id
+        `,
+        normalizedUserIds,
+      ),
+    ]);
+
+  updatesResult.rows.forEach((row) => {
+    const current = baseOverview[row.user_id];
+    if (!current) return;
+
+    current.unreadUpdatesCount = Number(row.unread_updates_count) || 0;
+    current.lastUpdateAt = row.last_update_at ? toIsoString(row.last_update_at) : null;
+  });
+
+  meetingsResult.rows.forEach((row) => {
+    const current = baseOverview[row.user_id];
+    if (!current) return;
+
+    current.pendingMeetingsCount = Number(row.pending_meetings_count) || 0;
+    current.lastMeetingAt = row.last_meeting_at ? toIsoString(row.last_meeting_at) : null;
+  });
+
+  messagesResult.rows.forEach((row) => {
+    const current = baseOverview[row.user_id];
+    if (!current) return;
+
+    current.lastClientMessageAt = row.last_client_message_at
+      ? toIsoString(row.last_client_message_at)
+      : null;
+    current.lastCoachMessageAt = row.last_coach_message_at
+      ? toIsoString(row.last_coach_message_at)
+      : null;
+  });
+
+  checkInsResult.rows.forEach((row) => {
+    const current = baseOverview[row.user_id];
+    if (!current) return;
+
+    current.lastCheckInAt = row.last_check_in_at
+      ? toIsoString(row.last_check_in_at)
+      : null;
+  });
+
+  habitLogsResult.rows.forEach((row) => {
+    const current = baseOverview[row.user_id];
+    if (!current) return;
+
+    current.lastHabitLogAt = row.last_habit_log_at
+      ? toIsoString(row.last_habit_log_at)
+      : null;
+  });
+
+  weightResult.rows.forEach((row) => {
+    const current = baseOverview[row.user_id];
+    if (!current) return;
+
+    current.lastWeightEntryAt = row.last_weight_entry_at
+      ? toIsoString(row.last_weight_entry_at)
+      : null;
+  });
+
+  return baseOverview;
+}
+
 // ─── Coach Meals (מאגר ארוחות של המאמנת) ────────────────────────────────────
 
 function mapCoachMeal(row) {
@@ -1421,6 +1583,7 @@ module.exports = {
   getHabitLogsForDate,
   getHabitAssignmentsWithLogs,
   saveHabitLog,
+  getClientEngagementOverview,
   getAllCoachMeals,
   getCoachMealById,
   createCoachMeal,
