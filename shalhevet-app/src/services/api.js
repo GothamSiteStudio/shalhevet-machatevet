@@ -163,6 +163,9 @@ export const coachAPI = {
   updateMeeting: (id, status) => apiRequest('PUT', `/coach/meetings/${id}`, { status }),
 
   // הודעות
+  getMessageTemplates: () => apiRequest('GET', '/coach/message-templates'),
+  updateMessageTemplates: templates =>
+    apiRequest('PUT', '/coach/message-templates', { templates }),
   getMessages: () => apiRequest('GET', '/coach/messages'),
   sendMessage: (userId, text) => apiRequest('POST', `/coach/messages/${userId}`, { text }),
 

@@ -69,6 +69,27 @@ function normalizeTextList(value) {
   )];
 }
 
+function normalizeQuickMessageTemplates(value) {
+  if (!Array.isArray(value)) return [];
+
+  return value
+    .map((template, index) => {
+      const title = String(template?.title || "").trim();
+      const text = String(template?.text || "").trim();
+
+      if (!title && !text) {
+        return null;
+      }
+
+      return {
+        id: template?.id || `quick-message-template-${index + 1}`,
+        title: title || `תבנית ${index + 1}`,
+        text,
+      };
+    })
+    .filter((template) => template && template.text);
+}
+
 function normalizeHabitAssignments(value) {
   if (!Array.isArray(value)) return [];
 
@@ -192,6 +213,9 @@ function mapUser(row) {
     coachTags: normalizeTextList(row.coach_tags || []),
     habitAssignments: normalizeHabitAssignments(row.habit_assignments || []),
     checkInTemplate: normalizeCheckInTemplate(row.check_in_template || {}),
+    quickMessageTemplates: normalizeQuickMessageTemplates(
+      row.quick_message_templates || [],
+    ),
     isActive: toBoolean(row.is_active, true),
     notes: row.notes || "",
     code: row.code || null,
@@ -642,6 +666,11 @@ async function updateUser(id, updates) {
       column: "check_in_template",
       cast: "jsonb",
       transform: (value) => JSON.stringify(normalizeCheckInTemplate(value)),
+    },
+    quickMessageTemplates: {
+      column: "quick_message_templates",
+      cast: "jsonb",
+      transform: (value) => JSON.stringify(normalizeQuickMessageTemplates(value)),
     },
     isActive: {
       column: "is_active",

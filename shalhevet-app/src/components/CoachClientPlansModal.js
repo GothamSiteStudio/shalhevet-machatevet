@@ -142,6 +142,47 @@ function createEmptyAccountForm() {
   };
 }
 
+const DEFAULT_QUICK_MESSAGE_TEMPLATES = [
+  {
+    title: 'בדיקת דופק',
+    text: 'היי {{firstName}}, רק בודקת מה שלומך היום ואם יש משהו שצריך לדייק או להתאים.',
+  },
+  {
+    title: 'תזכורת צ׳ק-אין',
+    text: 'היי {{firstName}}, עוד לא קיבלתי ממך את הצ׳ק-אין השבועי. כשתוכלי שלחי לי ואעבור עליו יחד איתך.',
+  },
+  {
+    title: 'חיזוק חיובי',
+    text: 'אלופה {{firstName}}, ראיתי את ההשקעה שלך ואני רוצה לחזק אותך. תמשיכי כך ואני כאן לכל דיוק שצריך.',
+  },
+  {
+    title: 'תזכורת הרגלים',
+    text: 'היי {{firstName}}, רק תזכורת קטנה לסמן את ההרגלים שלך היום. אם משהו נתקע, כתבי לי ונפשט את זה יחד.',
+  },
+];
+
+function getClientFirstName(client) {
+  return String(client?.name || '')
+    .trim()
+    .split(/\s+/)[0] || 'יקרה';
+}
+
+function createEmptyQuickMessageTemplate() {
+  return {
+    id: makeId('quick-message-template'),
+    title: '',
+    text: '',
+  };
+}
+
+function createSeedQuickMessageTemplates() {
+  return DEFAULT_QUICK_MESSAGE_TEMPLATES.map(template => ({
+    id: makeId('quick-message-template'),
+    title: template.title,
+    text: template.text,
+  }));
+}
+
 function createEmptyHabit() {
   return {
     id: makeId('habit'),
@@ -379,6 +420,69 @@ function mapCheckInTemplateToForm(template) {
         }))
       : [],
   };
+}
+
+function mapQuickMessageTemplatesToForm(templates, { seedDefaults = false } = {}) {
+  const normalized = Array.isArray(templates)
+    ? templates
+        .map((template, index) => ({
+          id: template?.id || makeId('quick-message-template'),
+          title: template?.title || `תבנית ${index + 1}`,
+          text: template?.text || '',
+        }))
+        .filter(template => template.title.trim() || template.text.trim())
+    : [];
+
+  if (normalized.length === 0 && seedDefaults) {
+    return createSeedQuickMessageTemplates();
+  }
+
+  return normalized;
+}
+
+function validateQuickMessageTemplates(templates) {
+  if (!Array.isArray(templates)) {
+    return 'לא הצלחנו לקרוא את תבניות ההודעות';
+  }
+
+  if (templates.length === 0) {
+    return 'השאירי לפחות תבנית הודעה מהירה אחת';
+  }
+
+  for (let index = 0; index < templates.length; index += 1) {
+    const template = templates[index] || {};
+    const title = String(template.title || '').trim();
+    const text = String(template.text || '').trim();
+
+    if (!title && !text) {
+      return `תבנית הודעה מספר ${index + 1} ריקה. אפשר למחוק אותה או למלא תוכן.`;
+    }
+
+    if (!text) {
+      return `חסר נוסח לתבנית "${title || `תבנית ${index + 1}`}"`;
+    }
+  }
+
+  return null;
+}
+
+function serializeQuickMessageTemplates(templates) {
+  return templates
+    .map((template, index) => ({
+      id: template.id || makeId('quick-message-template'),
+      title: template.title.trim() || `תבנית ${index + 1}`,
+      text: template.text.trim(),
+    }))
+    .filter(template => template.text);
+}
+
+function applyQuickMessageTemplate(text, client) {
+  const fullName = String(client?.name || '').trim();
+  const firstName = getClientFirstName(client);
+
+  return String(text || '')
+    .replace(/\{\{\s*firstName\s*\}\}/gi, firstName)
+    .replace(/\{\{\s*name\s*\}\}/gi, fullName || firstName);
 }
 
 function serializeGoals(form) {
@@ -716,6 +820,9 @@ export default function CoachClientPlansModal({ visible, clientId, onClose, onSa
   const [saving, setSaving] = useState(false);
   const [foodDiarySaving, setFoodDiarySaving] = useState(false);
   const [sendingAutomationReminder, setSendingAutomationReminder] = useState(false);
+  const [quickMessageTemplates, setQuickMessageTemplates] = useState([]);
+  const [messageTemplatesSaving, setMessageTemplatesSaving] = useState(false);
+  const [sendingQuickMessageId, setSendingQuickMessageId] = useState(null);
   const [client, setClient] = useState(null);
   const [accountForm, setAccountForm] = useState(createEmptyAccountForm());
   const [goalsForm, setGoalsForm] = useState(createEmptyGoalsForm());
@@ -752,6 +859,9 @@ export default function CoachClientPlansModal({ visible, clientId, onClose, onSa
     setFoodDiaryEntries([]);
     setFoodDiaryEditorVisible(false);
     setEditingFoodDiaryEntry(null);
+    setQuickMessageTemplates([]);
+    setMessageTemplatesSaving(false);
+    setSendingQuickMessageId(null);
     setSendingAutomationReminder(false);
   }, []);
 
@@ -830,6 +940,15 @@ export default function CoachClientPlansModal({ visible, clientId, onClose, onSa
       setFoodDiaryEntries(
         todayEntry ? upsertFoodDiaryEntries(recentEntries, todayEntry) : recentEntries
       );
+
+      try {
+        const templatesRes = await coachAPI.getMessageTemplates();
+        setQuickMessageTemplates(
+          mapQuickMessageTemplatesToForm(templatesRes.templates, { seedDefaults: true })
+        );
+      } catch {
+        setQuickMessageTemplates(mapQuickMessageTemplatesToForm([], { seedDefaults: true }));
+      }
 
       try {
         const mealsRes = await coachAPI.getMeals();
@@ -1050,6 +1169,74 @@ export default function CoachClientPlansModal({ visible, clientId, onClose, onSa
       Alert.alert('שגיאה', err.message || 'לא ניתן לשלוח תזכורת כרגע');
     } finally {
       setSendingAutomationReminder(false);
+    }
+  };
+
+  const addQuickMessageTemplate = () => {
+    setQuickMessageTemplates(current => [...current, createEmptyQuickMessageTemplate()]);
+  };
+
+  const removeQuickMessageTemplate = templateId => {
+    setQuickMessageTemplates(current => current.filter(template => template.id !== templateId));
+  };
+
+  const updateQuickMessageTemplateField = (templateId, field, value) => {
+    setQuickMessageTemplates(current =>
+      current.map(template =>
+        template.id === templateId ? { ...template, [field]: value } : template
+      )
+    );
+  };
+
+  const handleSaveQuickMessageTemplates = async () => {
+    const validationMessage = validateQuickMessageTemplates(quickMessageTemplates);
+    if (validationMessage) {
+      Alert.alert('שגיאה', validationMessage);
+      return;
+    }
+
+    setMessageTemplatesSaving(true);
+    try {
+      const result = await coachAPI.updateMessageTemplates(
+        serializeQuickMessageTemplates(quickMessageTemplates)
+      );
+      setQuickMessageTemplates(mapQuickMessageTemplatesToForm(result.templates));
+      Alert.alert('✅ נשמר', result.message || 'תבניות ההודעות נשמרו בהצלחה');
+    } catch (err) {
+      Alert.alert('שגיאה', err.message || 'לא ניתן לשמור את תבניות ההודעות כרגע');
+    } finally {
+      setMessageTemplatesSaving(false);
+    }
+  };
+
+  const handleSendQuickMessageTemplate = async templateId => {
+    if (!clientId) return;
+
+    const template = quickMessageTemplates.find(item => item.id === templateId);
+    const messageText = applyQuickMessageTemplate(template?.text, client).trim();
+
+    if (!messageText) {
+      Alert.alert('שגיאה', 'נא למלא נוסח הודעה לפני השליחה');
+      return;
+    }
+
+    setSendingQuickMessageId(templateId);
+    try {
+      const result = await coachAPI.sendMessage(clientId, messageText);
+      setClient(current =>
+        current
+          ? {
+              ...current,
+              automationStatus: result.automationStatus || current.automationStatus,
+            }
+          : current
+      );
+      Alert.alert('✅ נשלח', result.message || 'ההודעה נשלחה ללקוחה');
+      if (onSaved) onSaved();
+    } catch (err) {
+      Alert.alert('שגיאה', err.message || 'לא ניתן לשלוח את ההודעה כרגע');
+    } finally {
+      setSendingQuickMessageId(null);
     }
   };
 
@@ -1633,6 +1820,122 @@ export default function CoachClientPlansModal({ visible, clientId, onClose, onSa
             </>
           );
         })()}
+      </SectionCard>
+
+      <SectionCard
+        title="הודעות מהירות"
+        subtitle="תבניות אישיות שאפשר לשמור פעם אחת ולשלוח ללקוחה בלחיצה"
+        icon="chatbubble-ellipses-outline"
+        actionLabel="הוסיפי תבנית"
+        onActionPress={addQuickMessageTemplate}
+      >
+        <Text style={styles.helperText}>
+          אפשר להשתמש ב-{'{{firstName}}'} או ב-{'{{name}}'} כדי לשלב את שם הלקוחה אוטומטית בנוסח.
+        </Text>
+
+        <View style={styles.summaryChipsRow}>
+          <SummaryChip
+            label="תבניות"
+            value={quickMessageTemplates.length}
+            color={COLORS.primary}
+          />
+          <SummaryChip label="שליחה ל" value={getClientFirstName(client)} color={COLORS.info} />
+        </View>
+
+        {quickMessageTemplates.length === 0 ? (
+          <Text style={styles.emptyStateText}>
+            עדיין אין תבניות שמורות. לחצי על הוסיפי תבנית כדי להכין נוסחים קבועים לליווי.
+          </Text>
+        ) : (
+          quickMessageTemplates.map((template, index) => {
+            const previewText = applyQuickMessageTemplate(template.text, client).trim();
+
+            return (
+              <View key={template.id} style={styles.nestedCard}>
+                <View style={styles.nestedCardHeader}>
+                  <TouchableOpacity
+                    onPress={() => removeQuickMessageTemplate(template.id)}
+                    style={styles.removeBtn}
+                  >
+                    <Ionicons name="trash-outline" size={16} color={COLORS.danger} />
+                    <Text style={styles.removeBtnText}>מחיקה</Text>
+                  </TouchableOpacity>
+                  <Text style={styles.nestedCardTitle}>
+                    {template.title.trim() || `תבנית ${index + 1}`}
+                  </Text>
+                </View>
+
+                <Field
+                  label="שם פנימי"
+                  value={template.title}
+                  onChangeText={value => updateQuickMessageTemplateField(template.id, 'title', value)}
+                  placeholder="למשל: בדיקת דופק / חיזוק / צ׳ק-אין"
+                />
+
+                <Field
+                  label="נוסח ההודעה"
+                  value={template.text}
+                  onChangeText={value => updateQuickMessageTemplateField(template.id, 'text', value)}
+                  placeholder="היי {{firstName}}, ..."
+                  multiline
+                />
+
+                <View style={styles.quickMessagePreview}>
+                  <Text style={styles.quickMessagePreviewLabel}>תצוגה לפני שליחה</Text>
+                  <Text
+                    style={[
+                      styles.quickMessagePreviewText,
+                      !previewText && styles.quickMessagePreviewTextPlaceholder,
+                    ]}
+                  >
+                    {previewText || 'כתבי נוסח כדי לראות כאן בדיוק מה הלקוחה תקבל.'}
+                  </Text>
+                </View>
+
+                <TouchableOpacity
+                  style={[
+                    styles.quickMessageSendBtn,
+                    (!template.text.trim() || sendingQuickMessageId === template.id)
+                      && styles.quickMessageSendBtnDisabled,
+                  ]}
+                  onPress={() => handleSendQuickMessageTemplate(template.id)}
+                  disabled={!template.text.trim() || sendingQuickMessageId === template.id}
+                >
+                  {sendingQuickMessageId === template.id ? (
+                    <ActivityIndicator color={COLORS.white} />
+                  ) : (
+                    <>
+                      <Ionicons name="send-outline" size={16} color={COLORS.white} />
+                      <Text style={styles.quickMessageSendBtnText}>שלחי ללקוחה</Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+              </View>
+            );
+          })
+        )}
+
+        <TouchableOpacity
+          style={[
+            styles.quickMessageSaveBtn,
+            messageTemplatesSaving && styles.quickMessageSaveBtnDisabled,
+          ]}
+          onPress={handleSaveQuickMessageTemplates}
+          disabled={messageTemplatesSaving}
+        >
+          {messageTemplatesSaving ? (
+            <ActivityIndicator color={COLORS.primary} />
+          ) : (
+            <>
+              <Ionicons name="save-outline" size={16} color={COLORS.primary} />
+              <Text style={styles.quickMessageSaveBtnText}>שמרי את התבניות לשימוש חוזר</Text>
+            </>
+          )}
+        </TouchableOpacity>
+
+        <Text style={styles.quickMessageFooterText}>
+          השמירה חלה על כל הלקוחות. השליחה מכאן מתבצעת רק ללקוחה שפתוחה כרגע.
+        </Text>
       </SectionCard>
 
       <SectionCard
@@ -3065,6 +3368,75 @@ const styles = StyleSheet.create({
     fontSize: 12,
     lineHeight: 19,
     textAlign: 'right',
+  },
+  quickMessageFooterText: {
+    color: COLORS.textMuted,
+    fontSize: 11,
+    lineHeight: 17,
+    marginTop: 10,
+    textAlign: 'right',
+  },
+  quickMessagePreview: {
+    backgroundColor: COLORS.card,
+    borderColor: COLORS.border,
+    borderRadius: 12,
+    borderWidth: 1,
+    marginTop: 12,
+    padding: 12,
+  },
+  quickMessagePreviewLabel: {
+    color: COLORS.textSecondary,
+    fontSize: 11,
+    marginBottom: 6,
+    textAlign: 'right',
+  },
+  quickMessagePreviewText: {
+    color: COLORS.white,
+    fontSize: 12,
+    lineHeight: 19,
+    textAlign: 'right',
+  },
+  quickMessagePreviewTextPlaceholder: {
+    color: COLORS.textMuted,
+  },
+  quickMessageSaveBtn: {
+    alignItems: 'center',
+    borderColor: COLORS.primary,
+    borderRadius: 12,
+    borderWidth: 1,
+    flexDirection: 'row-reverse',
+    gap: 8,
+    justifyContent: 'center',
+    marginTop: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+  },
+  quickMessageSaveBtnDisabled: {
+    opacity: 0.65,
+  },
+  quickMessageSaveBtnText: {
+    color: COLORS.primary,
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  quickMessageSendBtn: {
+    alignItems: 'center',
+    backgroundColor: COLORS.primary,
+    borderRadius: 12,
+    flexDirection: 'row-reverse',
+    gap: 8,
+    justifyContent: 'center',
+    marginTop: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+  },
+  quickMessageSendBtnDisabled: {
+    backgroundColor: COLORS.borderLight,
+  },
+  quickMessageSendBtnText: {
+    color: COLORS.white,
+    fontSize: 13,
+    fontWeight: '700',
   },
   cancelBtn: {
     alignItems: 'center',

@@ -11,6 +11,8 @@
  * PUT  /api/coach/meetings/:id    - אישור/דחיית פגישה
  * GET  /api/coach/messages        - כל ההודעות
  * POST /api/coach/messages/:userId - שלח הודעה ללקוחה
+ * GET  /api/coach/message-templates - תבניות הודעות מהירות למאמנת
+ * PUT  /api/coach/message-templates - שמירת תבניות הודעות מהירות
  * GET  /api/coach/stats           - סטטיסטיקות כלליות
  * GET  /api/coach/meals           - מאגר ארוחות של המאמנת
  * GET  /api/coach/meals/:id       - ארוחה ספציפית מהמאגר
@@ -76,6 +78,7 @@ const CHECK_IN_QUESTION_TYPES = new Set([
   "yesNo",
   "scale",
 ]);
+const MAX_QUICK_MESSAGE_TEMPLATES = 12;
 const MS_IN_DAY = 24 * 60 * 60 * 1000;
 const MS_IN_HOUR = 60 * 60 * 1000;
 const AUTOMATION_THRESHOLDS = Object.freeze({
@@ -595,6 +598,35 @@ function buildCheckInTemplatePayload(value) {
   };
 }
 
+function buildQuickMessageTemplatesPayload(value) {
+  if (value === undefined) return undefined;
+
+  const templates = ensureArray(value, "quickMessageTemplates");
+
+  if (templates.length > MAX_QUICK_MESSAGE_TEMPLATES) {
+    throw createBadRequest(
+      `אפשר לשמור עד ${MAX_QUICK_MESSAGE_TEMPLATES} תבניות הודעה מהירה`,
+    );
+  }
+
+  return templates.map((template, index) => {
+    if (!template || typeof template !== "object" || Array.isArray(template)) {
+      throw createBadRequest(`תבנית הודעה מספר ${index + 1} אינה תקינה`);
+    }
+
+    const text = parseOptionalText(template.text) || "";
+    if (!text) {
+      throw createBadRequest(`חסר נוסח לתבנית הודעה מספר ${index + 1}`);
+    }
+
+    return {
+      id: parseOptionalText(template.id) || `quick-message-template-${index + 1}`,
+      title: parseOptionalText(template.title) || `תבנית ${index + 1}`,
+      text,
+    };
+  });
+}
+
 function buildMealItems(items, mealIndex) {
   return ensureArray(items, `meals[${mealIndex}].items`).map(
     (item, itemIndex) => {
@@ -930,6 +962,41 @@ router.post(
       message: `נשלחה תזכורת מעקב ל${client.name}`,
       data: message,
       automationStatus: buildAutomationStatus(client, refreshedOverviewMap[client.id]),
+    });
+  }),
+);
+
+router.get(
+  "/message-templates",
+  asyncHandler(async (req, res) => {
+    const coach = await getUserById(req.user.id);
+
+    res.json({
+      success: true,
+      templates: Array.isArray(coach?.quickMessageTemplates)
+        ? coach.quickMessageTemplates
+        : [],
+    });
+  }),
+);
+
+router.put(
+  "/message-templates",
+  asyncHandler(async (req, res) => {
+    const templates = buildQuickMessageTemplatesPayload(req.body?.templates);
+
+    if (templates === undefined) {
+      return res.status(400).json({ error: "יש לשלוח מערך templates" });
+    }
+
+    const updatedCoach = await updateUser(req.user.id, {
+      quickMessageTemplates: templates,
+    });
+
+    res.json({
+      success: true,
+      message: "תבניות ההודעות נשמרו ✅",
+      templates: updatedCoach?.quickMessageTemplates || [],
     });
   }),
 );
@@ -1390,8 +1457,9 @@ router.get(
 );
 
 // ─── POST /api/coach/messages/:userId - שלח הודעה ללקוחה ─────────────────────
-router.post("/messages/:userId", async (req, res) => {
-  try {
+router.post(
+  "/messages/:userId",
+  asyncHandler(async (req, res) => {
     const { text } = req.body;
     const { userId } = req.params;
 
@@ -1399,27 +1467,22 @@ router.post("/messages/:userId", async (req, res) => {
       return res.status(400).json({ error: "נא לכתוב הודעה" });
     }
 
-    const client = await getUserById(userId);
-    if (!client || client.role !== "client") {
+    const client = await getClientOrNull(userId);
+    if (!client) {
       return res.status(404).json({ error: "לקוחה לא נמצאה" });
     }
 
-    const message = await addMessage(
-      "coach-shalhevet",
-      userId,
-      text.trim(),
-      "coach",
-    );
+    const message = await addMessage(req.user.id, userId, text.trim(), "coach");
+    const refreshedOverviewMap = await getClientEngagementOverview([client.id]);
 
     res.json({
       success: true,
       message: `ההודעה נשלחה ל${client.name}! ✅`,
       data: message,
+      automationStatus: buildAutomationStatus(client, refreshedOverviewMap[client.id]),
     });
-  } catch (err) {
-    res.status(500).json({ error: "שגיאה בשליחת הודעה" });
-  }
-});
+  }),
+);
 
 // ─── GET /api/coach/stats - סטטיסטיקות ──────────────────────────────────────
 router.get(
