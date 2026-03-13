@@ -10,7 +10,7 @@
  * 4. בקשות פגישות
  */
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -56,15 +56,19 @@ function ClientCard({ client, onPress }) {
   const accessibilityLabel = [
     client.name,
     client.isActive ? 'לקוחה פעילה' : 'לקוחה לא פעילה',
+    client.requiresAttention ? 'דורשת טיפול' : null,
     client.goal ? `מטרה ${client.goal}` : null,
     client.weight ? `משקל ${client.weight} קילוגרם` : null,
+    client.pendingMeetingsCount ? `${client.pendingMeetingsCount} פגישות ממתינות` : null,
+    client.unreadUpdatesCount ? `${client.unreadUpdatesCount} עדכונים חדשים` : null,
+    client.isNewClient ? 'לקוחה חדשה' : null,
   ]
     .filter(Boolean)
     .join(', ');
 
   return (
     <TouchableOpacity
-      style={styles.clientCard}
+      style={[styles.clientCard, client.requiresAttention && styles.clientCardPriority]}
       onPress={onPress}
       activeOpacity={0.7}
       accessible={true}
@@ -78,6 +82,29 @@ function ClientCard({ client, onPress }) {
           <Text style={styles.clientEmail}>{client.email}</Text>
           {client.goal && <Text style={styles.clientGoal}>🎯 {client.goal}</Text>}
           <Text style={styles.clientActionHint}>לחצי לעריכת חשבון, יעדים, תזונה ויומן אכילה</Text>
+          {(client.pendingMeetingsCount || client.unreadUpdatesCount || client.isNewClient) ? (
+            <View style={styles.clientBadgesRow}>
+              {client.pendingMeetingsCount ? (
+                <View style={[styles.clientBadge, styles.clientBadgePending]}>
+                  <Text style={[styles.clientBadgeText, styles.clientBadgePendingText]}>
+                    {client.pendingMeetingsCount} פגישות ממתינות
+                  </Text>
+                </View>
+              ) : null}
+              {client.unreadUpdatesCount ? (
+                <View style={[styles.clientBadge, styles.clientBadgeUnread]}>
+                  <Text style={[styles.clientBadgeText, styles.clientBadgeUnreadText]}>
+                    {client.unreadUpdatesCount} עדכונים חדשים
+                  </Text>
+                </View>
+              ) : null}
+              {client.isNewClient ? (
+                <View style={[styles.clientBadge, styles.clientBadgeNew]}>
+                  <Text style={[styles.clientBadgeText, styles.clientBadgeNewText]}>לקוחה חדשה</Text>
+                </View>
+              ) : null}
+            </View>
+          ) : null}
         </View>
         <View style={styles.clientMeta}>
           {client.weight && <Text style={styles.clientWeight}>{`${client.weight} ק״ג`}</Text>}
@@ -312,6 +339,38 @@ const MEAL_CATEGORIES = [
   'מתוק',
   'כללי',
 ];
+
+const CLIENT_FILTERS = [
+  { id: 'all', label: 'הכל' },
+  { id: 'attention', label: 'דורש טיפול' },
+  { id: 'active', label: 'פעילות' },
+  { id: 'inactive', label: 'לא פעילות' },
+  { id: 'new', label: 'חדשות' },
+];
+
+const NEW_CLIENT_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
+
+function normalizeSearchText(value) {
+  return String(value || '').trim().toLowerCase();
+}
+
+function toTimestamp(value) {
+  const timestamp = new Date(value || '').getTime();
+  return Number.isFinite(timestamp) ? timestamp : 0;
+}
+
+function getMeetingPriority(status) {
+  switch (status) {
+    case 'ממתין לאישור':
+      return 3;
+    case 'אושר':
+      return 2;
+    case 'נדחה':
+      return 1;
+    default:
+      return 0;
+  }
+}
 
 // ─── מודל עריכת ארוחה למאגר ─────────────────────────────────────────────────
 function CoachMealEditorModal({ visible, onClose, onSaved, editMeal }) {
@@ -591,6 +650,7 @@ export default function CoachDashboardScreen() {
   const [selectedClientId, setSelectedClientId] = useState(null);
   const [showClientPlansModal, setShowClientPlansModal] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [clientFilter, setClientFilter] = useState('all');
 
   // מאגר ארוחות
   const [coachMeals, setCoachMeals] = useState([]);
@@ -636,6 +696,122 @@ export default function CoachDashboardScreen() {
     loadData();
   };
 
+  const prioritizedUpdates = useMemo(
+    () =>
+      [...updates].sort((left, right) => {
+        if (left.readByCoach !== right.readByCoach) {
+          return Number(left.readByCoach) - Number(right.readByCoach);
+        }
+
+        return toTimestamp(right.createdAt || right.date) - toTimestamp(left.createdAt || left.date);
+      }),
+    [updates]
+  );
+
+  const prioritizedMeetings = useMemo(
+    () =>
+      [...meetings].sort((left, right) => {
+        const priorityDelta = getMeetingPriority(right.status) - getMeetingPriority(left.status);
+        if (priorityDelta !== 0) {
+          return priorityDelta;
+        }
+
+        return (
+          toTimestamp(right.updatedAt || right.createdAt || right.requestedDate) -
+          toTimestamp(left.updatedAt || left.createdAt || left.requestedDate)
+        );
+      }),
+    [meetings]
+  );
+
+  const prioritizedClients = useMemo(() => {
+    const updatesByClient = new Map();
+    const meetingsByClient = new Map();
+    const now = Date.now();
+
+    prioritizedUpdates.forEach(update => {
+      const current = updatesByClient.get(update.userId) || [];
+      updatesByClient.set(update.userId, [...current, update]);
+    });
+
+    prioritizedMeetings.forEach(meeting => {
+      const current = meetingsByClient.get(meeting.userId) || [];
+      meetingsByClient.set(meeting.userId, [...current, meeting]);
+    });
+
+    return [...clients]
+      .map(client => {
+        const clientUpdates = updatesByClient.get(client.id) || [];
+        const clientMeetings = meetingsByClient.get(client.id) || [];
+        const unreadUpdatesCount = clientUpdates.filter(update => !update.readByCoach).length;
+        const pendingMeetingsCount = clientMeetings.filter(
+          meeting => meeting.status === 'ממתין לאישור'
+        ).length;
+        const isNewClient = now - toTimestamp(client.createdAt) <= NEW_CLIENT_WINDOW_MS;
+        const lastActivityAt = Math.max(
+          toTimestamp(client.createdAt),
+          ...clientUpdates.map(update => toTimestamp(update.createdAt || update.date)),
+          ...clientMeetings.map(meeting =>
+            toTimestamp(meeting.updatedAt || meeting.createdAt || meeting.requestedDate)
+          )
+        );
+        const requiresAttention = unreadUpdatesCount > 0 || pendingMeetingsCount > 0;
+
+        return {
+          ...client,
+          unreadUpdatesCount,
+          pendingMeetingsCount,
+          isNewClient,
+          requiresAttention,
+          lastActivityAt,
+          priorityScore:
+            pendingMeetingsCount * 100 +
+            unreadUpdatesCount * 10 +
+            (isNewClient ? 5 : 0) +
+            (client.isActive ? 1 : 0),
+        };
+      })
+      .sort((left, right) => {
+        if (left.requiresAttention !== right.requiresAttention) {
+          return Number(right.requiresAttention) - Number(left.requiresAttention);
+        }
+
+        if (left.priorityScore !== right.priorityScore) {
+          return right.priorityScore - left.priorityScore;
+        }
+
+        if (left.lastActivityAt !== right.lastActivityAt) {
+          return right.lastActivityAt - left.lastActivityAt;
+        }
+
+        return normalizeSearchText(left.name).localeCompare(normalizeSearchText(right.name), 'he');
+      });
+  }, [clients, prioritizedMeetings, prioritizedUpdates]);
+
+  const clientFilterOptions = useMemo(() => {
+    const counts = {
+      all: prioritizedClients.length,
+      attention: prioritizedClients.filter(client => client.requiresAttention).length,
+      active: prioritizedClients.filter(client => client.isActive).length,
+      inactive: prioritizedClients.filter(client => !client.isActive).length,
+      new: prioritizedClients.filter(client => client.isNewClient).length,
+    };
+
+    return CLIENT_FILTERS.map(filter => ({
+      ...filter,
+      count: counts[filter.id] || 0,
+    }));
+  }, [prioritizedClients]);
+
+  const attentionSummary = useMemo(
+    () => ({
+      clients: prioritizedClients.filter(client => client.requiresAttention).length,
+      meetings: prioritizedClients.reduce((sum, client) => sum + client.pendingMeetingsCount, 0),
+      updates: prioritizedClients.reduce((sum, client) => sum + client.unreadUpdatesCount, 0),
+    }),
+    [prioritizedClients]
+  );
+
   const handleMeetingStatus = async (meetingId, status) => {
     try {
       await coachAPI.updateMeeting(meetingId, status);
@@ -646,9 +822,24 @@ export default function CoachDashboardScreen() {
     }
   };
 
-  const filteredClients = clients.filter(
-    c => c.name.includes(searchQuery) || c.email.includes(searchQuery)
-  );
+  const normalizedClientSearchQuery = normalizeSearchText(searchQuery);
+
+  const visibleClients = prioritizedClients.filter(client => {
+    const matchesSearch =
+      !normalizedClientSearchQuery ||
+      [client.name, client.email, client.goal, client.phone]
+        .filter(Boolean)
+        .some(value => normalizeSearchText(value).includes(normalizedClientSearchQuery));
+
+    const matchesFilter =
+      clientFilter === 'all' ||
+      (clientFilter === 'attention' && client.requiresAttention) ||
+      (clientFilter === 'active' && client.isActive) ||
+      (clientFilter === 'inactive' && !client.isActive) ||
+      (clientFilter === 'new' && client.isNewClient);
+
+    return matchesSearch && matchesFilter;
+  });
 
   const openClientModal = clientId => {
     setSelectedClientId(clientId);
@@ -811,7 +1002,57 @@ export default function CoachDashboardScreen() {
           {/* ─── טאב לקוחות ─── */}
           {activeTab === 'clients' && (
             <>
-              {/* חיפוש */}
+              <View style={styles.priorityCard}>
+                <View style={styles.priorityRow}>
+                  <View style={styles.priorityMetric}>
+                    <Text style={styles.priorityValue}>{attentionSummary.clients}</Text>
+                    <Text style={styles.priorityLabel}>לקוחות דורשות טיפול</Text>
+                  </View>
+                  <View style={styles.priorityDivider} />
+                  <View style={styles.priorityMetric}>
+                    <Text style={styles.priorityValue}>{attentionSummary.meetings}</Text>
+                    <Text style={styles.priorityLabel}>פגישות ממתינות</Text>
+                  </View>
+                  <View style={styles.priorityDivider} />
+                  <View style={styles.priorityMetric}>
+                    <Text style={styles.priorityValue}>{attentionSummary.updates}</Text>
+                    <Text style={styles.priorityLabel}>עדכונים חדשים</Text>
+                  </View>
+                </View>
+              </View>
+
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                style={styles.clientFiltersScroll}
+              >
+                <View style={styles.clientFiltersRow}>
+                  {clientFilterOptions.map(filter => (
+                    <TouchableOpacity
+                      key={filter.id}
+                      style={[
+                        styles.clientFilterChip,
+                        clientFilter === filter.id && styles.clientFilterChipActive,
+                      ]}
+                      onPress={() => setClientFilter(filter.id)}
+                    >
+                      <Text
+                        style={[
+                          styles.clientFilterChipText,
+                          clientFilter === filter.id && styles.clientFilterChipTextActive,
+                        ]}
+                      >
+                        {filter.label} ({filter.count})
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </ScrollView>
+
+              <Text style={styles.clientSortHint}>
+                לקוחות עם פגישות ממתינות ועדכונים חדשים מוצגות ראשונות.
+              </Text>
+
               <View style={styles.searchWrapper}>
                 <Ionicons
                   name="search-outline"
@@ -829,14 +1070,20 @@ export default function CoachDashboardScreen() {
                 />
               </View>
 
-              {filteredClients.length === 0 ? (
+              {visibleClients.length === 0 ? (
                 <View style={styles.empty}>
                   <Ionicons name="people-outline" size={48} color={COLORS.textMuted} />
-                  <Text style={styles.emptyTitle}>אין לקוחות עדיין</Text>
-                  <Text style={styles.emptyText}>לחצי על + למעלה להוספת לקוחה חדשה</Text>
+                  <Text style={styles.emptyTitle}>
+                    {clients.length === 0 ? 'אין לקוחות עדיין' : 'לא נמצאו לקוחות תואמות'}
+                  </Text>
+                  <Text style={styles.emptyText}>
+                    {clients.length === 0
+                      ? 'לחצי על + למעלה להוספת לקוחה חדשה'
+                      : 'נסי לנקות את החיפוש או להחליף פילטר'}
+                  </Text>
                 </View>
               ) : (
-                filteredClients.map(client => (
+                visibleClients.map(client => (
                   <ClientCard
                     key={client.id}
                     client={client}
@@ -991,17 +1238,36 @@ export default function CoachDashboardScreen() {
           {/* ─── טאב עדכונים ─── */}
           {activeTab === 'updates' && (
             <>
-              {updates.length === 0 ? (
+              {prioritizedUpdates.length > 0 ? (
+                <View style={styles.sectionNoticeCard}>
+                  <Ionicons name="mail-unread-outline" size={16} color={COLORS.info} />
+                  <Text style={styles.sectionNoticeText}>
+                    {attentionSummary.updates} עדכונים חדשים דורשים מעבר
+                  </Text>
+                </View>
+              ) : null}
+
+              {prioritizedUpdates.length === 0 ? (
                 <View style={styles.empty}>
                   <Ionicons name="newspaper-outline" size={48} color={COLORS.textMuted} />
                   <Text style={styles.emptyTitle}>אין עדכונים עדיין</Text>
                   <Text style={styles.emptyText}>הלקוחות ישלחו עדכונים שבועיים מהאפליקציה</Text>
                 </View>
               ) : (
-                updates.map(update => (
-                  <View key={update.id} style={styles.updateCard}>
+                prioritizedUpdates.map(update => (
+                  <View
+                    key={update.id}
+                    style={[styles.updateCard, !update.readByCoach && styles.updateCardUnread]}
+                  >
                     <View style={styles.updateHeader}>
-                      <Text style={styles.updateDate}>{update.date}</Text>
+                      <View style={styles.updateMetaLeft}>
+                        {!update.readByCoach ? (
+                          <View style={styles.updateUnreadBadge}>
+                            <Text style={styles.updateUnreadBadgeText}>חדש</Text>
+                          </View>
+                        ) : null}
+                        <Text style={styles.updateDate}>{update.date}</Text>
+                      </View>
                       <Text style={styles.updateClient}>{update.clientName}</Text>
                     </View>
                     <Text style={styles.updateText}>{update.text}</Text>
@@ -1014,14 +1280,23 @@ export default function CoachDashboardScreen() {
           {/* ─── טאב פגישות ─── */}
           {activeTab === 'meetings' && (
             <>
-              {meetings.length === 0 ? (
+              {prioritizedMeetings.length > 0 ? (
+                <View style={styles.sectionNoticeCard}>
+                  <Ionicons name="calendar-outline" size={16} color={COLORS.warning} />
+                  <Text style={styles.sectionNoticeText}>
+                    {attentionSummary.meetings} פגישות עדיין ממתינות לאישור
+                  </Text>
+                </View>
+              ) : null}
+
+              {prioritizedMeetings.length === 0 ? (
                 <View style={styles.empty}>
                   <Ionicons name="calendar-outline" size={48} color={COLORS.textMuted} />
                   <Text style={styles.emptyTitle}>אין בקשות פגישות</Text>
                   <Text style={styles.emptyText}>הלקוחות יכולות לבקש פגישה מהאפליקציה</Text>
                 </View>
               ) : (
-                meetings.map(meeting => (
+                prioritizedMeetings.map(meeting => (
                   <View key={meeting.id} style={styles.meetingCard}>
                     <View style={styles.meetingHeader}>
                       <View
@@ -1151,7 +1426,57 @@ const styles = StyleSheet.create({
     marginBottom: 10,
     padding: 14,
   },
+  clientCardPriority: {
+    borderColor: COLORS.primary + '66',
+  },
+  clientBadge: {
+    borderRadius: 999,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  clientBadgeNew: { backgroundColor: '#2E7D3233' },
+  clientBadgeNewText: { color: COLORS.success },
+  clientBadgePending: { backgroundColor: '#E6510033' },
+  clientBadgePendingText: { color: '#FFA726' },
+  clientBadgeText: { fontSize: 10, fontWeight: '700' },
+  clientBadgeUnread: { backgroundColor: '#1565C033' },
+  clientBadgeUnreadText: { color: COLORS.info },
+  clientBadgesRow: {
+    flexDirection: 'row-reverse',
+    flexWrap: 'wrap',
+    gap: 6,
+    marginTop: 8,
+  },
   clientEmail: { color: COLORS.textMuted, fontSize: 12, textAlign: 'right' },
+  clientFiltersRow: {
+    flexDirection: 'row-reverse',
+    gap: 6,
+    paddingBottom: 4,
+  },
+  clientFiltersScroll: {
+    marginBottom: 8,
+  },
+  clientFilterChip: {
+    backgroundColor: COLORS.card,
+    borderColor: COLORS.border,
+    borderRadius: 16,
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+  },
+  clientFilterChipActive: {
+    backgroundColor: COLORS.primary + '22',
+    borderColor: COLORS.primary,
+  },
+  clientFilterChipText: {
+    color: COLORS.textMuted,
+    fontSize: 12,
+    fontWeight: '500',
+  },
+  clientFilterChipTextActive: {
+    color: COLORS.primary,
+    fontWeight: '700',
+  },
   clientGoal: { color: COLORS.textSecondary, fontSize: 11, marginTop: 2, textAlign: 'right' },
   clientInfo: {
     alignItems: 'center',
@@ -1172,6 +1497,12 @@ const styles = StyleSheet.create({
   emptyText: { color: COLORS.textMuted, fontSize: 13, textAlign: 'center' },
 
   emptyTitle: { color: COLORS.white, fontSize: 18, fontWeight: 'bold' },
+  clientSortHint: {
+    color: COLORS.textSecondary,
+    fontSize: 12,
+    marginBottom: 10,
+    textAlign: 'right',
+  },
   formMessage: {
     alignItems: 'center',
     borderRadius: 12,
@@ -1277,6 +1608,24 @@ const styles = StyleSheet.create({
     marginBottom: 4,
     textAlign: 'center',
   },
+  priorityCard: {
+    backgroundColor: COLORS.card,
+    borderColor: COLORS.primary + '44',
+    borderRadius: 14,
+    borderWidth: 1,
+    marginBottom: 12,
+    padding: 14,
+  },
+  priorityDivider: { backgroundColor: COLORS.border, height: 34, width: 1 },
+  priorityLabel: {
+    color: COLORS.textSecondary,
+    fontSize: 11,
+    marginTop: 4,
+    textAlign: 'center',
+  },
+  priorityMetric: { alignItems: 'center', flex: 1 },
+  priorityRow: { alignItems: 'center', flexDirection: 'row', gap: 10 },
+  priorityValue: { color: COLORS.white, fontSize: 22, fontWeight: '700' },
   rejectBtn: { backgroundColor: COLORS.card, borderColor: '#B71C1C', borderWidth: 1 },
   rejectBtnText: { color: '#F44336', fontSize: 14, fontWeight: '600' },
   safe: { backgroundColor: COLORS.background, flex: 1 },
@@ -1346,6 +1695,24 @@ const styles = StyleSheet.create({
     marginHorizontal: 16,
     padding: 4,
   },
+  sectionNoticeCard: {
+    alignItems: 'center',
+    backgroundColor: COLORS.card,
+    borderColor: COLORS.border,
+    borderRadius: 12,
+    borderWidth: 1,
+    flexDirection: 'row-reverse',
+    gap: 8,
+    marginBottom: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  sectionNoticeText: {
+    color: COLORS.textSecondary,
+    flex: 1,
+    fontSize: 12,
+    textAlign: 'right',
+  },
   updateCard: {
     backgroundColor: COLORS.card,
     borderColor: COLORS.border,
@@ -1354,9 +1721,20 @@ const styles = StyleSheet.create({
     marginBottom: 10,
     padding: 14,
   },
+  updateCardUnread: {
+    borderColor: '#42A5F566',
+  },
   updateClient: { color: COLORS.primary, fontSize: 14, fontWeight: '600' },
   updateDate: { color: COLORS.textMuted, fontSize: 12 },
   updateHeader: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 },
+  updateMetaLeft: { alignItems: 'center', flexDirection: 'row', gap: 8 },
+  updateUnreadBadge: {
+    backgroundColor: '#42A5F522',
+    borderRadius: 999,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+  },
+  updateUnreadBadgeText: { color: COLORS.info, fontSize: 10, fontWeight: '700' },
   updateText: { color: COLORS.white, fontSize: 14, lineHeight: 20, textAlign: 'right' },
 
   // ─── סגנונות מאגר ארוחות ───

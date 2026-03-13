@@ -37,6 +37,9 @@ const MEAL_CONFIG = {
   snacks: { label: 'נשנושים', icon: 'cafe-outline', color: '#42A5F5' },
 };
 
+const RECENT_ENTRIES_LIMIT = 14;
+const RECENT_ITEMS_LIMIT = 8;
+
 function getHebrewDate(date) {
   const days = ['ראשון', 'שני', 'שלישי', 'רביעי', 'חמישי', 'שישי', 'שבת'];
   const months = [
@@ -60,8 +63,86 @@ function createDiaryItemId() {
   return `fd-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
 }
 
+function createRecentFoodItemSignature(item = {}) {
+  return [
+    item.name,
+    item.portion,
+    item.calories,
+    item.protein,
+    item.carbs,
+    item.fat,
+    item.source,
+    item.photoUri,
+  ].join('|');
+}
+
+function formatShortDateLabel(dateKey) {
+  const [year, month, day] = String(dateKey || '')
+    .split('-')
+    .map(part => Number(part));
+
+  if (!year || !month || !day) {
+    return '';
+  }
+
+  return `${String(day).padStart(2, '0')}.${String(month).padStart(2, '0')}`;
+}
+
+function buildRecentFoodItems(entries = []) {
+  const signatures = new Set();
+  const items = [];
+
+  entries.forEach(entry => {
+    const normalizedEntry = normalizeFoodDiaryEntry(entry, entry?.date);
+
+    Object.entries(normalizedEntry.meals).forEach(([mealType, mealItems]) => {
+      mealItems.forEach((item, index) => {
+        if (!item?.name || item.source === 'photo') {
+          return;
+        }
+
+        const signature = createRecentFoodItemSignature(item);
+        if (signatures.has(signature)) {
+          return;
+        }
+
+        signatures.add(signature);
+        items.push({
+          ...item,
+          id: `recent-${normalizedEntry.date}-${mealType}-${item.id || index + 1}`,
+          mealType,
+          loggedAt: normalizedEntry.date,
+        });
+      });
+    });
+  });
+
+  return items.slice(0, RECENT_ITEMS_LIMIT);
+}
+
+function mergeRecentDiaryEntries(currentEntries = [], nextEntry) {
+  if (!nextEntry) {
+    return currentEntries;
+  }
+
+  const seenEntries = new Set();
+
+  return [nextEntry, ...currentEntries]
+    .map(entry => normalizeFoodDiaryEntry(entry, entry?.date))
+    .filter(entry => {
+      const key = entry.id || entry.date;
+      if (seenEntries.has(key)) {
+        return false;
+      }
+
+      seenEntries.add(key);
+      return true;
+    })
+    .slice(0, RECENT_ENTRIES_LIMIT);
+}
+
 // ─── Add Food Modal ─────────────────────────────────────
-function AddFoodModal({ visible, onClose, onAdd, mealType }) {
+function AddFoodModal({ visible, onClose, onAdd, mealType, recentItems = [] }) {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedFood, setSelectedFood] = useState(null);
   const [quantity, setQuantity] = useState('100');
@@ -138,6 +219,14 @@ function AddFoodModal({ visible, onClose, onAdd, mealType }) {
     resetAndClose();
   };
 
+  const handleAddRecentItem = item => {
+    onAdd({
+      ...item,
+      id: createDiaryItemId(),
+    });
+    resetAndClose();
+  };
+
   const config = MEAL_CONFIG[mealType] || MEAL_CONFIG.snacks;
 
   return (
@@ -198,6 +287,51 @@ function AddFoodModal({ visible, onClose, onAdd, mealType }) {
                   autoFocus
                 />
               </View>
+
+              {!selectedFood && !searchQuery.trim() && recentItems.length > 0 ? (
+                <View style={styles.recentSection}>
+                  <View style={styles.recentSectionHeader}>
+                    <View style={styles.recentSectionTextWrap}>
+                      <Text style={styles.recentSectionTitle}>הוספה מהירה מהימים האחרונים</Text>
+                      <Text style={styles.recentSectionSubtitle}>
+                        לחיצה אחת מוסיפה ישר ל{config.label}
+                      </Text>
+                    </View>
+                    <View
+                      style={[
+                        styles.recentSectionIconWrap,
+                        { backgroundColor: `${config.color}22` },
+                      ]}
+                    >
+                      <Ionicons name="flash-outline" size={16} color={config.color} />
+                    </View>
+                  </View>
+
+                  <ScrollView
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    contentContainerStyle={styles.recentItemsRow}
+                  >
+                    {recentItems.map(item => (
+                      <TouchableOpacity
+                        key={item.id}
+                        style={styles.recentItemCard}
+                        onPress={() => handleAddRecentItem(item)}
+                        activeOpacity={0.8}
+                      >
+                        <Text style={styles.recentItemTitle} numberOfLines={1}>
+                          {item.name}
+                        </Text>
+                        <Text style={styles.recentItemMeta} numberOfLines={1}>
+                          {item.portion ? `${item.portion} · ` : ''}
+                          {Math.round(item.calories)} קל׳
+                        </Text>
+                        <Text style={styles.recentItemDate}>{formatShortDateLabel(item.loggedAt)}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </ScrollView>
+                </View>
+              ) : null}
 
               {selectedFood ? (
                 /* Selected Food Details */
@@ -470,6 +604,7 @@ export default function FoodDiaryScreen({ navigation }) {
   const [addModalVisible, setAddModalVisible] = useState(false);
   const [activeMealType, setActiveMealType] = useState('breakfast');
   const [diaryEntry, setDiaryEntry] = useState(() => normalizeFoodDiaryEntry(null));
+  const [recentEntries, setRecentEntries] = useState([]);
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
   const [loadError, setLoadError] = useState('');
@@ -477,13 +612,22 @@ export default function FoodDiaryScreen({ navigation }) {
   const dateKey = getFoodDiaryDateKey(currentDate);
   const diary = diaryEntry.meals;
   const dayTotals = diaryEntry.totals;
+  const recentItems = useMemo(() => buildRecentFoodItems(recentEntries), [recentEntries]);
 
   const loadDiary = useCallback(async () => {
     setLoading(true);
 
     try {
-      const result = await usersAPI.getFoodDiary(dateKey);
+      const result = await usersAPI.getFoodDiary(dateKey, {
+        includeRecent: true,
+        recentLimit: RECENT_ENTRIES_LIMIT,
+      });
       setDiaryEntry(normalizeFoodDiaryEntry(result.entry, dateKey));
+      setRecentEntries(
+        Array.isArray(result.recentEntries)
+          ? result.recentEntries.map(entry => normalizeFoodDiaryEntry(entry, entry?.date || dateKey))
+          : []
+      );
       setLoadError('');
     } catch (err) {
       setDiaryEntry(normalizeFoodDiaryEntry(null, dateKey));
@@ -507,6 +651,7 @@ export default function FoodDiaryScreen({ navigation }) {
       try {
         const result = await usersAPI.saveFoodDiary(dateKey, { meals: nextMeals });
         setDiaryEntry(normalizeFoodDiaryEntry(result.entry, dateKey));
+        setRecentEntries(currentEntries => mergeRecentDiaryEntries(currentEntries, result.entry));
         setLoadError('');
       } catch (err) {
         setLoadError(err.message || 'לא ניתן לסנכרן את יומן האכילה');
@@ -707,6 +852,7 @@ export default function FoodDiaryScreen({ navigation }) {
         onClose={() => setAddModalVisible(false)}
         onAdd={handleAddItem}
         mealType={activeMealType}
+        recentItems={recentItems}
       />
     </SafeAreaView>
   );
@@ -946,6 +1092,71 @@ const styles = StyleSheet.create({
     color: COLORS.white,
     fontSize: 15,
     paddingVertical: 12,
+    textAlign: 'right',
+  },
+  recentSection: {
+    marginBottom: 12,
+  },
+  recentSectionHeader: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 10,
+  },
+  recentSectionTextWrap: {
+    alignItems: 'flex-end',
+    flex: 1,
+  },
+  recentSectionTitle: {
+    color: COLORS.white,
+    fontSize: 15,
+    fontWeight: '700',
+    textAlign: 'right',
+  },
+  recentSectionSubtitle: {
+    color: COLORS.textSecondary,
+    fontSize: 12,
+    marginTop: 2,
+    textAlign: 'right',
+  },
+  recentSectionIconWrap: {
+    alignItems: 'center',
+    borderRadius: 14,
+    height: 28,
+    justifyContent: 'center',
+    marginRight: 10,
+    width: 28,
+  },
+  recentItemsRow: {
+    flexDirection: 'row-reverse',
+    gap: 8,
+  },
+  recentItemCard: {
+    backgroundColor: COLORS.cardLight,
+    borderColor: COLORS.border,
+    borderRadius: 14,
+    borderWidth: 1,
+    minHeight: 88,
+    padding: 12,
+    width: 150,
+  },
+  recentItemTitle: {
+    color: COLORS.white,
+    fontSize: 14,
+    fontWeight: '600',
+    textAlign: 'right',
+  },
+  recentItemMeta: {
+    color: COLORS.textSecondary,
+    fontSize: 11,
+    marginTop: 6,
+    textAlign: 'right',
+  },
+  recentItemDate: {
+    color: COLORS.primary,
+    fontSize: 11,
+    fontWeight: '700',
+    marginTop: 8,
     textAlign: 'right',
   },
 
