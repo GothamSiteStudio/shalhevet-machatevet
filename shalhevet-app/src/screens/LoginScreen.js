@@ -23,7 +23,7 @@ export default function LoginScreen({ navigation }) {
   const [password, setPassword] = useState('');
   const [showPass, setShowPass] = useState(false);
   const [loading, setLoading] = useState(false);
-  const login = useStore((s) => s.login);
+  const login = useStore(s => s.login);
   const passwordRef = useRef(null);
 
   const handleLogin = async () => {
@@ -44,14 +44,16 @@ export default function LoginScreen({ navigation }) {
   };
 
   const handleDemo = () => {
-    login({
-      id: 'demo-user',
-      email: 'demo@shalhevet.com',
-      name: 'דמו - שלהבת',
-      role: 'client',
-      goal: 'חיטוב',
-      weight: 65,
-      coachName: 'שלהבת מחטבת',
+    tokenStorage.remove().finally(() => {
+      login({
+        id: 'demo-user',
+        email: 'demo@shalhevet.com',
+        name: 'דמו - שלהבת',
+        role: 'client',
+        goal: 'חיטוב',
+        weight: 65,
+        coachName: 'שלהבת מחטבת',
+      });
     });
   };
 
@@ -80,18 +82,10 @@ export default function LoginScreen({ navigation }) {
             />
           </View>
 
-          <Text
-            style={styles.title}
-            accessible={true}
-            accessibilityRole="header"
-          >
+          <Text style={styles.title} accessible={true} accessibilityRole="header">
             שלהבת מחטבת
           </Text>
-          <Text
-            style={styles.subtitle}
-            accessible={true}
-            accessibilityLabel="ברוכה הבאה"
-          >
+          <Text style={styles.subtitle} accessible={true} accessibilityLabel="ברוכה הבאה">
             ברוכה הבאה! 💪
           </Text>
           <Text style={styles.subsubtitle} accessible={true}>
@@ -99,15 +93,8 @@ export default function LoginScreen({ navigation }) {
           </Text>
 
           {/* Form */}
-          <View
-            style={styles.form}
-            accessible={false}
-          >
-            <Text
-              style={styles.formLabel}
-              accessibilityRole="header"
-              accessible={true}
-            >
+          <View style={styles.form} accessible={false}>
+            <Text style={styles.formLabel} accessibilityRole="header" accessible={true}>
               כניסה לאפליקציה
             </Text>
 
@@ -201,10 +188,7 @@ export default function LoginScreen({ navigation }) {
               accessibilityHint="לחצי לכניסה לחשבונך"
             >
               {loading ? (
-                <ActivityIndicator
-                  color={COLORS.white}
-                  accessible={false}
-                />
+                <ActivityIndicator color={COLORS.white} accessible={false} />
               ) : (
                 <Text style={styles.loginBtnText}>כניסה</Text>
               )}

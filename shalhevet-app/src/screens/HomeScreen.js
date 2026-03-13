@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -99,8 +99,11 @@ const MENU_ITEMS = [
 
 function MenuCard({ item, onPress, index }) {
   const IconComponent =
-    item.library === 'material' ? MaterialCommunityIcons :
-    item.library === 'fa5' ? FontAwesome5 : Ionicons;
+    item.library === 'material'
+      ? MaterialCommunityIcons
+      : item.library === 'fa5'
+        ? FontAwesome5
+        : Ionicons;
 
   return (
     <FadeInView delay={index * 100} direction="up" distance={30}>
@@ -134,20 +137,36 @@ function MenuCard({ item, onPress, index }) {
 }
 
 function WeightModal({ visible, onClose }) {
-  const { user, addWeight } = useStore();
+  const { user, addWeight, updateUser } = useStore();
   const [selected, setSelected] = useState(user?.weight || 65);
+  const [saving, setSaving] = useState(false);
   const weights = [];
+
+  useEffect(() => {
+    if (visible) {
+      setSelected(user?.weight || 65);
+    }
+  }, [visible, user]);
+
   for (let w = 35; w <= 150; w += 0.5) {
     weights.push(Math.round(w * 10) / 10);
   }
 
-  const handleSave = () => {
-    addWeight(selected);
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    onClose();
-    // Announce to screen readers
-    AccessibilityInfo.announceForAccessibility(`המשקל עודכן ל-${selected.toFixed(1)} קילוגרם`);
-    Alert.alert('✅ נשמר!', `המשקל עודכן ל-${selected.toFixed(1)} ק"ג`);
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      await usersAPI.addWeight(selected);
+      addWeight(selected);
+      updateUser({ weight: selected });
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      onClose();
+      AccessibilityInfo.announceForAccessibility(`המשקל עודכן ל-${selected.toFixed(1)} קילוגרם`);
+      Alert.alert('✅ נשמר!', `המשקל עודכן ל-${selected.toFixed(1)} ק"ג`);
+    } catch (err) {
+      Alert.alert('שגיאה', err.message || 'לא ניתן לעדכן את המשקל כרגע');
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -168,16 +187,8 @@ function WeightModal({ visible, onClose }) {
           accessibilityRole="button"
         />
         <View style={styles.modalSheet}>
-          <View
-            style={styles.modalHandle}
-            accessible={false}
-            importantForAccessibility="no"
-          />
-          <Text
-            style={styles.modalTitle}
-            accessibilityRole="header"
-            accessible={true}
-          >
+          <View style={styles.modalHandle} accessible={false} importantForAccessibility="no" />
+          <Text style={styles.modalTitle} accessibilityRole="header" accessible={true}>
             עדכון משקל
           </Text>
           <Text style={styles.modalSubtitle} accessible={true}>
@@ -190,8 +201,12 @@ function WeightModal({ visible, onClose }) {
             accessibilityLabel={`משקל נבחר: ${selected.toFixed(1)} קילוגרם`}
             accessibilityLiveRegion="polite"
           >
-            <Text style={styles.weightValue} accessible={false}>{selected.toFixed(1)}</Text>
-            <Text style={styles.weightUnit} accessible={false}>ק"ג</Text>
+            <Text style={styles.weightValue} accessible={false}>
+              {selected.toFixed(1)}
+            </Text>
+            <Text style={styles.weightUnit} accessible={false}>
+              ק״ג
+            </Text>
           </View>
 
           <ScrollView
@@ -200,7 +215,7 @@ function WeightModal({ visible, onClose }) {
             showsVerticalScrollIndicator={false}
             accessibilityLabel="רשימת משקלות לבחירה"
           >
-            {weights.map((w) => (
+            {weights.map(w => (
               <TouchableOpacity
                 key={w}
                 style={[styles.weightItem, selected === w && styles.weightItemActive]}
@@ -210,19 +225,22 @@ function WeightModal({ visible, onClose }) {
                 accessibilityRole="radio"
                 accessibilityState={{ checked: selected === w }}
               >
-                <Text style={[styles.weightItemText, selected === w && styles.weightItemTextActive]}>
-                  {w.toFixed(1)} ק"ג
+                <Text
+                  style={[styles.weightItemText, selected === w && styles.weightItemTextActive]}
+                >
+                  {w.toFixed(1)} ק״ג
                 </Text>
               </TouchableOpacity>
             ))}
           </ScrollView>
 
           <Button
-            title="שמור"
+            title={saving ? 'שומר...' : 'שמור'}
             onPress={handleSave}
             variant="primary"
             size="lg"
             style={{ width: '100%', marginTop: 8 }}
+            disabled={saving}
             accessibilityLabel={`שמרי משקל ${selected.toFixed(1)} קילוגרם`}
           />
         </View>
@@ -232,7 +250,8 @@ function WeightModal({ visible, onClose }) {
 }
 
 export default function HomeScreen({ navigation }) {
-  const user = useStore((s) => s.user);
+  const user = useStore(s => s.user);
+  const updateUser = useStore(s => s.updateUser);
   const [showWeightModal, setShowWeightModal] = useState(false);
   const [calorieSummary, setCalorieSummary] = useState({
     loading: true,
@@ -245,13 +264,17 @@ export default function HomeScreen({ navigation }) {
 
   const loadCalorieSummary = useCallback(async () => {
     const todayDateKey = getFoodDiaryDateKey();
-    const [planResult, diaryResult] = await Promise.allSettled([
+    const [meResult, planResult, diaryResult] = await Promise.allSettled([
+      usersAPI.getMe(),
       usersAPI.getNutritionPlan(),
       usersAPI.getFoodDiary(todayDateKey),
     ]);
 
-    const nutritionPlan =
-      planResult.status === 'fulfilled' ? planResult.value.nutritionPlan : null;
+    if (meResult.status === 'fulfilled' && meResult.value?.user) {
+      updateUser(meResult.value.user);
+    }
+
+    const nutritionPlan = planResult.status === 'fulfilled' ? planResult.value.nutritionPlan : null;
     const diaryEntry =
       diaryResult.status === 'fulfilled'
         ? normalizeFoodDiaryEntry(diaryResult.value.entry, todayDateKey)
@@ -260,11 +283,13 @@ export default function HomeScreen({ navigation }) {
     const consumedCalories = Math.round(diaryEntry.totals.calories);
     const hasTarget = targetCalories > 0;
     const error =
-      planResult.status === 'rejected'
-        ? planResult.reason?.message || 'לא ניתן לטעון את התפריט'
-        : diaryResult.status === 'rejected'
-          ? diaryResult.reason?.message || 'לא ניתן לטעון את יומן האכילה'
-          : '';
+      meResult.status === 'rejected'
+        ? meResult.reason?.message || 'לא ניתן לטעון את פרטי הפרופיל'
+        : planResult.status === 'rejected'
+          ? planResult.reason?.message || 'לא ניתן לטעון את נתוני התזונה'
+          : diaryResult.status === 'rejected'
+            ? diaryResult.reason?.message || 'לא ניתן לטעון את יומן האכילה'
+            : '';
 
     setCalorieSummary({
       loading: false,
@@ -274,7 +299,7 @@ export default function HomeScreen({ navigation }) {
       hasTarget,
       error,
     });
-  }, []);
+  }, [updateUser]);
 
   useFocusEffect(
     useCallback(() => {
@@ -282,7 +307,7 @@ export default function HomeScreen({ navigation }) {
     }, [loadCalorieSummary])
   );
 
-  const handleItemPress = (item) => {
+  const handleItemPress = item => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     if (item.id === 'weight') {
       setShowWeightModal(true);
@@ -335,7 +360,7 @@ export default function HomeScreen({ navigation }) {
           <View style={styles.statCard} accessible={false}>
             <Ionicons name="scale-outline" size={16} color={COLORS.primary} accessible={false} />
             <Text style={styles.statValue}>{user?.weight || '—'}</Text>
-            <Text style={styles.statLabel}>ק"ג</Text>
+            <Text style={styles.statLabel}>ק״ג</Text>
           </View>
           <View style={[styles.statCard, styles.statDivider]} accessible={false} />
           <View style={styles.statCard} accessible={false}>
@@ -346,7 +371,9 @@ export default function HomeScreen({ navigation }) {
           <View style={[styles.statCard, styles.statDivider]} accessible={false} />
           <View style={styles.statCard} accessible={false}>
             <Ionicons name="person-outline" size={16} color={COLORS.info} accessible={false} />
-            <Text style={styles.statValue} numberOfLines={1}>{user?.coachName || '—'}</Text>
+            <Text style={styles.statValue} numberOfLines={1}>
+              {user?.coachName || '—'}
+            </Text>
             <Text style={styles.statLabel}>מאמנת</Text>
           </View>
         </View>
@@ -442,7 +469,9 @@ export default function HomeScreen({ navigation }) {
           accessible={true}
           accessibilityLabel="לא דיאטה – הרגלים חדשים שנשארים. שלהבת מחטבת, מאמנת כושר אישית"
         >
-          <Text style={styles.motivationIcon} accessible={false}>🔥</Text>
+          <Text style={styles.motivationIcon} accessible={false}>
+            🔥
+          </Text>
           <View style={styles.motivationText} accessible={false}>
             <Text style={styles.motivationTitle}>לא דיאטה – הרגלים חדשים שנשארים</Text>
             <Text style={styles.motivationSub}>שלהבת מחטבת | מאמנת כושר אישית</Text>

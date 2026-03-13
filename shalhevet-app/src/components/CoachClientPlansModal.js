@@ -19,14 +19,16 @@ import { coachAPI } from '../services/api';
 import { RECIPE_CATALOG, createNutritionMealFromRecipe } from '../data/recipeCatalog';
 import {
   FOOD_DIARY_MEAL_TYPES,
+  getFoodDiaryDateKey,
   getFoodDiaryMealLabel,
   normalizeFoodDiaryEntry,
 } from '../utils/foodDiary';
+import CoachFoodDiaryEditorModal from './CoachFoodDiaryEditorModal';
 
 const TABS = [
   { id: 'account', label: 'חשבון', icon: 'key-outline' },
   { id: 'goals', label: 'יעדים', icon: 'flag-outline' },
-  { id: 'nutrition', label: 'תפריט', icon: 'restaurant-outline' },
+  { id: 'nutrition', label: 'תזונה', icon: 'restaurant-outline' },
   { id: 'workout', label: 'אימונים', icon: 'barbell-outline' },
 ];
 
@@ -62,6 +64,12 @@ function createEmptyAccountForm() {
     name: '',
     email: '',
     phone: '',
+    weight: '',
+    height: '',
+    age: '',
+    goal: '',
+    activityLevel: '',
+    notes: '',
     newPassword: '',
     confirmNewPassword: '',
     isActive: true,
@@ -263,6 +271,12 @@ function mapClientToAccountForm(client) {
     name: client.name || '',
     email: client.email || '',
     phone: client.phone || '',
+    weight: toInputValue(client.weight),
+    height: toInputValue(client.height),
+    age: toInputValue(client.age),
+    goal: client.goal || '',
+    activityLevel: client.activityLevel || '',
+    notes: client.notes || '',
     newPassword: '',
     confirmNewPassword: '',
     isActive: client.isActive !== false,
@@ -288,6 +302,10 @@ function validateAccountForm(form) {
     if (password !== confirmation) return 'אימות הסיסמה אינו תואם';
   }
 
+  if (form.weight && Number.isNaN(Number(form.weight))) return 'המשקל חייב להיות מספר תקין';
+  if (form.height && Number.isNaN(Number(form.height))) return 'הגובה חייב להיות מספר תקין';
+  if (form.age && Number.isNaN(Number(form.age))) return 'הגיל חייב להיות מספר תקין';
+
   return null;
 }
 
@@ -296,6 +314,12 @@ function serializeAccount(form) {
     name: form.name.trim(),
     email: form.email.trim().toLowerCase(),
     phone: form.phone.trim(),
+    weight: form.weight,
+    height: form.height,
+    age: form.age,
+    goal: form.goal.trim(),
+    activityLevel: form.activityLevel.trim(),
+    notes: form.notes.trim(),
     isActive: form.isActive,
   };
 
@@ -403,6 +427,21 @@ function validateWorkout(form) {
   return null;
 }
 
+function sortFoodDiaryEntries(entries) {
+  return [...entries].sort((first, second) =>
+    String(second?.date || '').localeCompare(String(first?.date || ''))
+  );
+}
+
+function upsertFoodDiaryEntries(entries, entry) {
+  const normalizedEntry = normalizeFoodDiaryEntry(entry, entry?.date || getFoodDiaryDateKey());
+
+  return sortFoodDiaryEntries([
+    normalizedEntry,
+    ...entries.filter(existing => existing.date !== normalizedEntry.date),
+  ]);
+}
+
 function SectionCard({ title, subtitle, children, actionLabel, onActionPress, icon }) {
   return (
     <View style={styles.sectionCard}>
@@ -474,6 +513,7 @@ export default function CoachClientPlansModal({ visible, clientId, onClose, onSa
   const [activeTab, setActiveTab] = useState('goals');
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [foodDiarySaving, setFoodDiarySaving] = useState(false);
   const [client, setClient] = useState(null);
   const [accountForm, setAccountForm] = useState(createEmptyAccountForm());
   const [goalsForm, setGoalsForm] = useState(createEmptyGoalsForm());
@@ -487,6 +527,8 @@ export default function CoachClientPlansModal({ visible, clientId, onClose, onSa
   const [coachMealQuery, setCoachMealQuery] = useState('');
   const [activeCoachMealCategory, setActiveCoachMealCategory] = useState('הכל');
   const [foodDiaryEntries, setFoodDiaryEntries] = useState([]);
+  const [foodDiaryEditorVisible, setFoodDiaryEditorVisible] = useState(false);
+  const [editingFoodDiaryEntry, setEditingFoodDiaryEntry] = useState(null);
 
   const resetForms = useCallback(() => {
     setClient(null);
@@ -500,6 +542,8 @@ export default function CoachClientPlansModal({ visible, clientId, onClose, onSa
     setCoachMealQuery('');
     setActiveCoachMealCategory('הכל');
     setFoodDiaryEntries([]);
+    setFoodDiaryEditorVisible(false);
+    setEditingFoodDiaryEntry(null);
   }, []);
 
   const queryMatchedRecipes = RECIPE_CATALOG.filter(recipe => {
@@ -564,12 +608,15 @@ export default function CoachClientPlansModal({ visible, clientId, onClose, onSa
       setGoalsForm(mapGoalsToForm(result.goals));
       setNutritionForm(mapNutritionToForm(result.nutritionPlan));
       setWorkoutForm(mapWorkoutToForm(result.workoutPlan));
+      const recentEntries = Array.isArray(result.foodDiaryEntries)
+        ? result.foodDiaryEntries.map(entry => normalizeFoodDiaryEntry(entry, entry?.date))
+        : [];
+      const todayEntry = result.todayFoodDiary
+        ? normalizeFoodDiaryEntry(result.todayFoodDiary, result.todayFoodDiary?.date)
+        : null;
+
       setFoodDiaryEntries(
-        Array.isArray(result.foodDiaryEntries)
-          ? result.foodDiaryEntries.map(entry => normalizeFoodDiaryEntry(entry, entry?.date))
-          : result.todayFoodDiary
-            ? [normalizeFoodDiaryEntry(result.todayFoodDiary, result.todayFoodDiary?.date)]
-            : []
+        todayEntry ? upsertFoodDiaryEntries(recentEntries, todayEntry) : recentEntries
       );
 
       try {
@@ -682,43 +729,46 @@ export default function CoachClientPlansModal({ visible, clientId, onClose, onSa
       meals: [...current.meals, meal],
     }));
 
-    Alert.alert('נוסף לתפריט', `${recipe.title} נוסף כמתכון חדש בתפריט.`);
+    Alert.alert('נוסף לתזונה', `${recipe.title} נוסף כמתכון חדש בתוכנית התזונה.`);
   };
 
   const addCoachMealToNutritionPlan = coachMeal => {
-    const mealItems = Array.isArray(coachMeal.items) && coachMeal.items.length > 0
-      ? coachMeal.items.map(item => ({
-          id: makeId('meal-item'),
-          name: item.name || coachMeal.title,
-          amount: item.amount || coachMeal.portion || '',
-          imageUrl: item.imageUrl || '',
-          calories: String(item.calories || coachMeal.calories || 0),
-          protein: String(item.protein || coachMeal.protein || 0),
-          carbs: String(item.carbs || coachMeal.carbs || 0),
-          fat: String(item.fat || coachMeal.fat || 0),
-          notes: item.notes || '',
-        }))
-      : [
-          {
+    const mealItems =
+      Array.isArray(coachMeal.items) && coachMeal.items.length > 0
+        ? coachMeal.items.map(item => ({
             id: makeId('meal-item'),
-            name: coachMeal.title,
-            amount: coachMeal.portion || '',
-            imageUrl: coachMeal.imageUrl || '',
-            calories: String(coachMeal.calories || 0),
-            protein: String(coachMeal.protein || 0),
-            carbs: String(coachMeal.carbs || 0),
-            fat: String(coachMeal.fat || 0),
-            notes: coachMeal.description || '',
-          },
-        ];
+            name: item.name || coachMeal.title,
+            amount: item.amount || coachMeal.portion || '',
+            imageUrl: item.imageUrl || '',
+            calories: String(item.calories || coachMeal.calories || 0),
+            protein: String(item.protein || coachMeal.protein || 0),
+            carbs: String(item.carbs || coachMeal.carbs || 0),
+            fat: String(item.fat || coachMeal.fat || 0),
+            notes: item.notes || '',
+          }))
+        : [
+            {
+              id: makeId('meal-item'),
+              name: coachMeal.title,
+              amount: coachMeal.portion || '',
+              imageUrl: coachMeal.imageUrl || '',
+              calories: String(coachMeal.calories || 0),
+              protein: String(coachMeal.protein || 0),
+              carbs: String(coachMeal.carbs || 0),
+              fat: String(coachMeal.fat || 0),
+              notes: coachMeal.description || '',
+            },
+          ];
 
-    const ingredientNotes = Array.isArray(coachMeal.ingredients) && coachMeal.ingredients.length > 0
-      ? '\n\nמצרכים:\n' + coachMeal.ingredients.map(i => `- ${i}`).join('\n')
-      : '';
+    const ingredientNotes =
+      Array.isArray(coachMeal.ingredients) && coachMeal.ingredients.length > 0
+        ? '\n\nמצרכים:\n' + coachMeal.ingredients.map(i => `- ${i}`).join('\n')
+        : '';
 
-    const instructionNotes = Array.isArray(coachMeal.instructions) && coachMeal.instructions.length > 0
-      ? '\n\nהכנה:\n' + coachMeal.instructions.map((s, i) => `${i + 1}. ${s}`).join('\n')
-      : '';
+    const instructionNotes =
+      Array.isArray(coachMeal.instructions) && coachMeal.instructions.length > 0
+        ? '\n\nהכנה:\n' + coachMeal.instructions.map((s, i) => `${i + 1}. ${s}`).join('\n')
+        : '';
 
     const meal = {
       id: makeId('meal'),
@@ -733,11 +783,39 @@ export default function CoachClientPlansModal({ visible, clientId, onClose, onSa
       meals: [...current.meals, meal],
     }));
 
-    Alert.alert('נוסף לתפריט', `${coachMeal.title} הוסף מהמאגר שלך לתפריט הלקוחה.`);
+    Alert.alert('נוסף לתזונה', `${coachMeal.title} הוסף מהמאגר שלך לתוכנית הלקוחה.`);
   };
 
   const showRecipeImagePrompt = recipe => {
     Alert.alert(`פרומפט תמונה: ${recipe.title}`, recipe.imagePrompt);
+  };
+
+  const openFoodDiaryEditor = entry => {
+    setEditingFoodDiaryEntry(normalizeFoodDiaryEntry(entry, entry?.date || getFoodDiaryDateKey()));
+    setFoodDiaryEditorVisible(true);
+  };
+
+  const handleSaveFoodDiary = async (date, meals) => {
+    if (!clientId || !date) return;
+
+    setFoodDiarySaving(true);
+    try {
+      const result = await coachAPI.updateClientFoodDiary(clientId, date, { meals });
+      const normalizedEntry = normalizeFoodDiaryEntry(result.entry, date);
+      const recentEntries = Array.isArray(result.recentEntries)
+        ? result.recentEntries.map(entry => normalizeFoodDiaryEntry(entry, entry?.date))
+        : [];
+
+      setFoodDiaryEntries(upsertFoodDiaryEntries(recentEntries, normalizedEntry));
+      setEditingFoodDiaryEntry(normalizedEntry);
+      setFoodDiaryEditorVisible(false);
+      Alert.alert('✅ נשמר', 'יומן האכילה עודכן בהצלחה');
+      if (onSaved) onSaved();
+    } catch (err) {
+      Alert.alert('שגיאה', err.message || 'לא ניתן לשמור את יומן האכילה');
+    } finally {
+      setFoodDiarySaving(false);
+    }
   };
 
   const updateWorkoutField = (field, value) => {
@@ -866,7 +944,7 @@ export default function CoachClientPlansModal({ visible, clientId, onClose, onSa
           serializeNutrition(nutritionForm)
         );
         setNutritionForm(mapNutritionToForm(result.nutritionPlan));
-        Alert.alert('✅ נשמר', 'התפריט האישי עודכן בהצלחה');
+        Alert.alert('✅ נשמר', 'תוכנית התזונה עודכנה בהצלחה');
       }
 
       if (activeTab === 'workout') {
@@ -977,7 +1055,7 @@ export default function CoachClientPlansModal({ visible, clientId, onClose, onSa
     <>
       <SectionCard
         title="חשבון והתחברות"
-        subtitle="עדכון פרטי כניסה של הלקוחה וסטטוס החשבון"
+        subtitle="עדכון פרטי כניסה, קשר ונתוני בסיס של הלקוחה"
         icon="key-outline"
       >
         <Field
@@ -1001,6 +1079,62 @@ export default function CoachClientPlansModal({ visible, clientId, onClose, onSa
           onChangeText={value => updateAccountField('phone', value)}
           placeholder="050-0000000"
           keyboardType="phone-pad"
+        />
+
+        <View style={styles.twoColumns}>
+          <View style={styles.flexField}>
+            <Field
+              label="משקל נוכחי"
+              value={accountForm.weight}
+              onChangeText={value => updateAccountField('weight', value)}
+              placeholder="65"
+              keyboardType="decimal-pad"
+            />
+          </View>
+          <View style={styles.flexField}>
+            <Field
+              label="גובה"
+              value={accountForm.height}
+              onChangeText={value => updateAccountField('height', value)}
+              placeholder="165"
+              keyboardType="decimal-pad"
+            />
+          </View>
+        </View>
+
+        <View style={styles.twoColumns}>
+          <View style={styles.flexField}>
+            <Field
+              label="גיל"
+              value={accountForm.age}
+              onChangeText={value => updateAccountField('age', value)}
+              placeholder="28"
+              keyboardType="numeric"
+            />
+          </View>
+          <View style={styles.flexField}>
+            <Field
+              label="מטרה כללית"
+              value={accountForm.goal}
+              onChangeText={value => updateAccountField('goal', value)}
+              placeholder="חיטוב"
+            />
+          </View>
+        </View>
+
+        <Field
+          label="רמת פעילות"
+          value={accountForm.activityLevel}
+          onChangeText={value => updateAccountField('activityLevel', value)}
+          placeholder="מתונה"
+        />
+
+        <Field
+          label="הערות פרופיל"
+          value={accountForm.notes}
+          onChangeText={value => updateAccountField('notes', value)}
+          placeholder="רגישויות, מגבלות או דגשים לליווי"
+          multiline
         />
 
         <View style={styles.fieldGroup}>
@@ -1054,7 +1188,8 @@ export default function CoachClientPlansModal({ visible, clientId, onClose, onSa
         <View style={styles.accountInfoBox}>
           <Ionicons name="information-circle-outline" size={18} color={COLORS.info} />
           <Text style={styles.accountInfoText}>
-            הלקוחה מתחברת עם האימייל והסיסמה שמוגדרים כאן. אם תשני את האימייל, הכניסה הבאה שלה תהיה עם האימייל החדש.
+            כל שינוי שנשמר כאן מתעדכן בפרופיל של הלקוחה. אם תשני את האימייל, הכניסה הבאה שלה תהיה עם
+            האימייל החדש.
           </Text>
         </View>
       </SectionCard>
@@ -1092,6 +1227,14 @@ export default function CoachClientPlansModal({ visible, clientId, onClose, onSa
         title="יומן אכילה בפועל"
         subtitle="מה שהלקוחה סימנה באפליקציה. זה אותו מידע שמשפיע על הקלוריות שנותרו אצלה."
         icon="journal-outline"
+        actionLabel="ערכי את היום"
+        onActionPress={() =>
+          openFoodDiaryEditor(
+            foodDiaryEntries.find(entry => entry.date === getFoodDiaryDateKey()) || {
+              date: getFoodDiaryDateKey(),
+            }
+          )
+        }
       >
         {foodDiaryEntries.length === 0 ? (
           <Text style={styles.emptyStateText}>הלקוחה עדיין לא רשמה ארוחות ביומן האכילה.</Text>
@@ -1123,23 +1266,36 @@ export default function CoachClientPlansModal({ visible, clientId, onClose, onSa
               const mealSummary = FOOD_DIARY_MEAL_TYPES.filter(
                 mealType => entry.meals[mealType].length > 0
               )
-                .map(mealType => `${getFoodDiaryMealLabel(mealType)}: ${entry.meals[mealType].length}`)
+                .map(
+                  mealType => `${getFoodDiaryMealLabel(mealType)}: ${entry.meals[mealType].length}`
+                )
                 .join(' | ');
 
               return (
                 <View key={entry.id || entry.date} style={styles.foodDiaryDayCard}>
                   <View style={styles.foodDiaryDayHeader}>
-                    <Text style={styles.foodDiaryDayCalories}>{Math.round(totals.calories)} קל׳</Text>
+                    <Text style={styles.foodDiaryDayCalories}>
+                      {Math.round(totals.calories)} קל׳
+                    </Text>
                     <Text style={styles.foodDiaryDayDate}>{entry.date}</Text>
                   </View>
                   <View style={styles.foodDiaryDayMeta}>
-                    <Text style={styles.foodDiaryDayMetaText}>ח׳ {totals.protein.toFixed(0)}ג׳</Text>
+                    <Text style={styles.foodDiaryDayMetaText}>
+                      ח׳ {totals.protein.toFixed(0)}ג׳
+                    </Text>
                     <Text style={styles.foodDiaryDayMetaText}>פ׳ {totals.carbs.toFixed(0)}ג׳</Text>
                     <Text style={styles.foodDiaryDayMetaText}>ש׳ {totals.fat.toFixed(0)}ג׳</Text>
                   </View>
                   <Text style={styles.foodDiaryDayMeals}>
                     {mealSummary || 'באותו יום עדיין לא נרשמו ארוחות.'}
                   </Text>
+                  <TouchableOpacity
+                    style={styles.foodDiaryEditBtn}
+                    onPress={() => openFoodDiaryEditor(entry)}
+                  >
+                    <Ionicons name="create-outline" size={15} color={COLORS.primary} />
+                    <Text style={styles.foodDiaryEditBtnText}>ערכי יום זה</Text>
+                  </TouchableOpacity>
                 </View>
               );
             })}
@@ -1150,22 +1306,21 @@ export default function CoachClientPlansModal({ visible, clientId, onClose, onSa
       <View style={styles.accountInfoBox}>
         <Ionicons name="information-circle-outline" size={18} color={COLORS.info} />
         <Text style={styles.accountInfoText}>
-          כדי לעדכן תפריט ללקוחה: הוסיפי ארוחות מהמאגר שלך או מספריית המתכונים,
-          ערכי לפי הצורך, ואז לחצי על שמרי תפריט. אחרי השמירה התפריט מתעדכן מייד
-          במסך התזונה של הלקוחה.
+          כדי לעדכן תזונה ללקוחה: הוסיפי ארוחות מהמאגר שלך או מספריית המתכונים, ערכי לפי הצורך, ואז
+          לחצי על שמרי תזונה. אחרי השמירה התוכנית מתעדכנת מייד במסך התזונה של הלקוחה.
         </Text>
       </View>
 
       <SectionCard
-        title="פרטי תפריט"
-        subtitle="שם לתפריט, הערות ודגשים יומיים"
+        title="פרטי תוכנית תזונה"
+        subtitle="שם לתוכנית, הערות ודגשים יומיים"
         icon="restaurant-outline"
       >
         <Field
-          label="שם התפריט"
+          label="שם התוכנית"
           value={nutritionForm.title}
           onChangeText={value => updateNutritionField('title', value)}
-          placeholder="תפריט חיטוב אישי"
+          placeholder="תוכנית תזונה אישית"
         />
         <Field
           label="הערות כלליות"
@@ -1234,7 +1389,7 @@ export default function CoachClientPlansModal({ visible, clientId, onClose, onSa
       {coachMeals.length > 0 && (
         <SectionCard
           title="מאגר הארוחות שלי"
-          subtitle="ארוחות שיצרת במאגר - לחצי להוסיף ללקוחה"
+          subtitle="ארוחות שיצרת במאגר - לחצי להוסיף לתוכנית של הלקוחה"
           icon="heart-outline"
         >
           <Field
@@ -1300,7 +1455,8 @@ export default function CoachClientPlansModal({ visible, clientId, onClose, onSa
                     <View style={styles.recipeCardTitleWrap}>
                       <Text style={styles.recipeCardTitle}>{meal.title}</Text>
                       <Text style={styles.recipeCardMeta}>
-                        {meal.category}{meal.portion ? ` · ${meal.portion}` : ''}
+                        {meal.category}
+                        {meal.portion ? ` · ${meal.portion}` : ''}
                         {meal.protein != null ? ` · ח׳${meal.protein}ג׳` : ''}
                       </Text>
                     </View>
@@ -1316,7 +1472,7 @@ export default function CoachClientPlansModal({ visible, clientId, onClose, onSa
                       style={styles.recipePrimaryBtn}
                     >
                       <Ionicons name="add-circle-outline" size={16} color={COLORS.white} />
-                      <Text style={styles.recipePrimaryBtnText}>הוסיפי לתפריט</Text>
+                      <Text style={styles.recipePrimaryBtnText}>הוסיפי לתזונה</Text>
                     </TouchableOpacity>
                   </View>
                 </View>
@@ -1430,7 +1586,7 @@ export default function CoachClientPlansModal({ visible, clientId, onClose, onSa
                         style={styles.recipePrimaryBtn}
                       >
                         <Ionicons name="add-circle-outline" size={16} color={COLORS.white} />
-                        <Text style={styles.recipePrimaryBtnText}>הוסיפי לתפריט</Text>
+                        <Text style={styles.recipePrimaryBtnText}>הוסיפי לתזונה</Text>
                       </TouchableOpacity>
                     </View>
                   </View>
@@ -1450,7 +1606,7 @@ export default function CoachClientPlansModal({ visible, clientId, onClose, onSa
       >
         {nutritionForm.meals.length === 0 ? (
           <Text style={styles.emptyStateText}>
-            עדיין אין ארוחות בתפריט. לחצי על הוסיפי ארוחה כדי להתחיל.
+            עדיין אין ארוחות בתוכנית התזונה. לחצי על הוסיפי ארוחה כדי להתחיל.
           </Text>
         ) : (
           nutritionForm.meals.map((meal, mealIndex) => (
@@ -1831,7 +1987,7 @@ export default function CoachClientPlansModal({ visible, clientId, onClose, onSa
   const getSaveLabel = () => {
     if (activeTab === 'account') return 'שמרי חשבון';
     if (activeTab === 'goals') return 'שמרי יעדים';
-    if (activeTab === 'nutrition') return 'שמרי תפריט';
+    if (activeTab === 'nutrition') return 'שמרי תזונה';
     return 'שמרי תוכנית';
   };
 
@@ -1850,7 +2006,7 @@ export default function CoachClientPlansModal({ visible, clientId, onClose, onSa
             </TouchableOpacity>
             <View style={styles.modalHeaderText}>
               <Text style={styles.modalTitle}>ניהול לקוחה</Text>
-              <Text style={styles.modalSub}>חשבון, יעדים, תפריט, יומן אכילה ותוכנית אימון</Text>
+              <Text style={styles.modalSub}>חשבון, יעדים, תזונה, יומן אכילה ותוכנית אימון</Text>
             </View>
             <View style={styles.headerIconBtn} />
           </View>
@@ -1953,6 +2109,16 @@ export default function CoachClientPlansModal({ visible, clientId, onClose, onSa
             </>
           )}
         </View>
+
+        <CoachFoodDiaryEditorModal
+          visible={foodDiaryEditorVisible}
+          entry={editingFoodDiaryEntry}
+          saving={foodDiarySaving}
+          onClose={() => {
+            if (!foodDiarySaving) setFoodDiaryEditorVisible(false);
+          }}
+          onSave={handleSaveFoodDiary}
+        />
       </KeyboardAvoidingView>
     </Modal>
   );
@@ -2077,45 +2243,6 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     textAlign: 'center',
   },
-  foodDiaryDayCard: {
-    backgroundColor: COLORS.card,
-    borderColor: COLORS.border,
-    borderRadius: 16,
-    borderWidth: 1,
-    marginTop: 10,
-    padding: 12,
-  },
-  foodDiaryDayHeader: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 8,
-  },
-  foodDiaryDayCalories: {
-    color: COLORS.primary,
-    fontSize: 13,
-    fontWeight: '700',
-  },
-  foodDiaryDayDate: {
-    color: COLORS.white,
-    fontSize: 13,
-    fontWeight: '700',
-  },
-  foodDiaryDayMeta: {
-    flexDirection: 'row-reverse',
-    gap: 10,
-    marginBottom: 8,
-  },
-  foodDiaryDayMetaText: {
-    color: COLORS.textSecondary,
-    fontSize: 11,
-  },
-  foodDiaryDayMeals: {
-    color: COLORS.textMuted,
-    fontSize: 12,
-    lineHeight: 18,
-    textAlign: 'right',
-  },
   fieldGroup: {
     marginBottom: 12,
   },
@@ -2127,6 +2254,57 @@ const styles = StyleSheet.create({
   },
   flexField: {
     flex: 1,
+  },
+  foodDiaryDayCalories: {
+    color: COLORS.primary,
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  foodDiaryDayCard: {
+    backgroundColor: COLORS.card,
+    borderColor: COLORS.border,
+    borderRadius: 16,
+    borderWidth: 1,
+    marginTop: 10,
+    padding: 12,
+  },
+  foodDiaryDayDate: {
+    color: COLORS.white,
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  foodDiaryDayHeader: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+  foodDiaryDayMeals: {
+    color: COLORS.textMuted,
+    fontSize: 12,
+    lineHeight: 18,
+    textAlign: 'right',
+  },
+  foodDiaryDayMeta: {
+    flexDirection: 'row-reverse',
+    gap: 10,
+    marginBottom: 8,
+  },
+  foodDiaryDayMetaText: {
+    color: COLORS.textSecondary,
+    fontSize: 11,
+  },
+  foodDiaryEditBtn: {
+    alignItems: 'center',
+    alignSelf: 'flex-end',
+    flexDirection: 'row-reverse',
+    gap: 6,
+    marginTop: 10,
+  },
+  foodDiaryEditBtnText: {
+    color: COLORS.primary,
+    fontSize: 13,
+    fontWeight: '600',
   },
   footerActions: {
     flexDirection: 'row',

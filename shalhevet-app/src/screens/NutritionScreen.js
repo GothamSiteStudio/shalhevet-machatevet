@@ -68,7 +68,7 @@ function normalizeNutritionPlan(plan) {
   if (!plan) return null;
 
   return {
-    title: plan.title || 'תפריט אישי',
+    title: plan.title || 'תוכנית תזונה אישית',
     notes: plan.notes || '',
     dailyTargets: {
       calories: toNumber(plan.dailyTargets?.calories),
@@ -266,7 +266,7 @@ export default function NutritionScreen({ navigation }) {
           }
         } else {
           setNutritionPlan(null);
-          nextError = planResult.reason?.message || 'לא ניתן לטעון את התפריט האישי כרגע';
+          nextError = planResult.reason?.message || 'לא ניתן לטעון את תוכנית התזונה כרגע';
         }
 
         if (diaryResult.status === 'fulfilled') {
@@ -280,7 +280,7 @@ export default function NutritionScreen({ navigation }) {
       } catch (err) {
         setNutritionPlan(null);
         setFoodDiaryEntry(normalizeFoodDiaryEntry(null, getFoodDiaryDateKey()));
-        setLoadError(err.message || 'לא ניתן לטעון את התפריט האישי כרגע');
+        setLoadError(err.message || 'לא ניתן לטעון את תוכנית התזונה כרגע');
       } finally {
         setLoading(false);
         setRefreshing(false);
@@ -349,7 +349,7 @@ export default function NutritionScreen({ navigation }) {
       <SafeAreaView style={styles.safe}>
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={COLORS.primary} />
-          <Text style={styles.loadingText}>טוען תפריט אישי...</Text>
+          <Text style={styles.loadingText}>טוען תוכנית תזונה...</Text>
         </View>
       </SafeAreaView>
     );
@@ -388,8 +388,8 @@ export default function NutritionScreen({ navigation }) {
                 color={COLORS.primary}
               />
               <View style={styles.planHeaderText}>
-                <Text style={styles.planTitle}>{nutritionPlan.title || 'תפריט אישי'}</Text>
-                <Text style={styles.planSubtitle}>התפריט שהמאמנת בנתה עבורך</Text>
+                <Text style={styles.planTitle}>{nutritionPlan.title || 'תוכנית תזונה אישית'}</Text>
+                <Text style={styles.planSubtitle}>תוכנית התזונה שהמאמנת בנתה עבורך</Text>
               </View>
             </View>
             {nutritionPlan.notes ? (
@@ -399,7 +399,7 @@ export default function NutritionScreen({ navigation }) {
         ) : (
           <View style={styles.emptyPlanCard}>
             <Ionicons name="restaurant-outline" size={28} color={COLORS.textMuted} />
-            <Text style={styles.emptyPlanTitle}>עדיין לא הוגדר תפריט אישי</Text>
+            <Text style={styles.emptyPlanTitle}>עדיין לא הוגדרה תוכנית תזונה</Text>
             <Text style={styles.emptyPlanText}>
               ברגע ששלהבת תשייך לך מתכונים וארוחות, הם יופיעו כאן עם קלוריות ותמונות.
             </Text>
@@ -424,12 +424,16 @@ export default function NutritionScreen({ navigation }) {
             </View>
             <View style={styles.budgetBreakdown}>
               <View style={styles.budgetBreakdownItem}>
-                <Text style={styles.budgetBreakdownValue}>{Math.round(consumedTotals.calories)}</Text>
+                <Text style={styles.budgetBreakdownValue}>
+                  {Math.round(consumedTotals.calories)}
+                </Text>
                 <Text style={styles.budgetBreakdownLabel}>נאכל היום</Text>
               </View>
               <View style={styles.budgetBreakdownItem}>
-                <Text style={styles.budgetBreakdownValue}>{Math.round(plannedTotals.calories)}</Text>
-                <Text style={styles.budgetBreakdownLabel}>בתפריט שהוגדר</Text>
+                <Text style={styles.budgetBreakdownValue}>
+                  {Math.round(plannedTotals.calories)}
+                </Text>
+                <Text style={styles.budgetBreakdownLabel}>בתוכנית שהוגדרה</Text>
               </View>
             </View>
             <Text style={styles.budgetHint}>

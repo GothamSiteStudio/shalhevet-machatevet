@@ -1,11 +1,5 @@
 import React, { useEffect, useRef } from 'react';
-import {
-  View,
-  Image,
-  StyleSheet,
-  Animated,
-  Dimensions,
-} from 'react-native';
+import { View, Image, StyleSheet, Animated, Dimensions } from 'react-native';
 import { COLORS } from '../theme/colors';
 
 const { width, height } = Dimensions.get('window');
@@ -16,6 +10,8 @@ export default function SplashScreen({ navigation }) {
   const textOpacity = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
+    let active = true;
+
     Animated.sequence([
       Animated.parallel([
         Animated.spring(logoScale, {
@@ -38,25 +34,23 @@ export default function SplashScreen({ navigation }) {
     ]).start();
 
     const timer = setTimeout(() => {
-      navigation.replace('Login');
+      if (active) {
+        navigation.replace('Login');
+      }
     }, 2500);
 
-    return () => clearTimeout(timer);
-  }, []);
+    return () => {
+      active = false;
+      clearTimeout(timer);
+    };
+  }, [logoOpacity, logoScale, navigation, textOpacity]);
 
   return (
     <View style={styles.container}>
       <Animated.View
-        style={[
-          styles.logoContainer,
-          { opacity: logoOpacity, transform: [{ scale: logoScale }] },
-        ]}
+        style={[styles.logoContainer, { opacity: logoOpacity, transform: [{ scale: logoScale }] }]}
       >
-        <Image
-          source={require('../../assets/logo.png')}
-          style={styles.logo}
-          resizeMode="contain"
-        />
+        <Image source={require('../../assets/logo.png')} style={styles.logo} resizeMode="contain" />
       </Animated.View>
 
       <Animated.View style={[styles.textContainer, { opacity: textOpacity }]}>

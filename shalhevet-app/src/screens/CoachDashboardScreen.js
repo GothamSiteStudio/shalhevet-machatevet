@@ -28,7 +28,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../theme/colors';
-import { coachAPI } from '../services/api';
+import { coachAPI, tokenStorage } from '../services/api';
 import { CATALOG_MEAL_SOURCE, mergeRecipeCatalogWithCoachMeals } from '../data/recipeCatalog';
 import CoachClientPlansModal from '../components/CoachClientPlansModal';
 import useStore from '../store/useStore';
@@ -58,7 +58,7 @@ function ClientCard({ client, onPress }) {
           <Text style={styles.clientName}>{client.name}</Text>
           <Text style={styles.clientEmail}>{client.email}</Text>
           {client.goal && <Text style={styles.clientGoal}>🎯 {client.goal}</Text>}
-          <Text style={styles.clientActionHint}>לחצי לעריכת חשבון, יעדים, תפריט ויומן אכילה</Text>
+          <Text style={styles.clientActionHint}>לחצי לעריכת חשבון, יעדים, תזונה ויומן אכילה</Text>
         </View>
         <View style={styles.clientMeta}>
           {client.weight && <Text style={styles.clientWeight}>{`${client.weight} ק״ג`}</Text>}
@@ -569,6 +569,14 @@ export default function CoachDashboardScreen() {
     setEditingMeal(null);
   };
 
+  const handleLogout = async () => {
+    try {
+      await tokenStorage.remove();
+    } finally {
+      logout();
+    }
+  };
+
   const mealLibrary = mergeRecipeCatalogWithCoachMeals(coachMeals);
 
   const mealCategoryList = ['הכל', ...new Set(mealLibrary.map(m => m.category).filter(Boolean))];
@@ -603,7 +611,7 @@ export default function CoachDashboardScreen() {
           onPress={() =>
             Alert.alert('יציאה', 'האם לצאת?', [
               { text: 'ביטול' },
-              { text: 'יציאה', style: 'destructive', onPress: logout },
+              { text: 'יציאה', style: 'destructive', onPress: handleLogout },
             ])
           }
         >

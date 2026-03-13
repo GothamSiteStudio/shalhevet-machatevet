@@ -1,22 +1,24 @@
 import { create } from 'zustand';
 
+const DEFAULT_USER = {
+  name: 'שלהבת',
+  email: '',
+  code: 'SHL001',
+  weight: 53.0,
+  height: 165,
+  age: 28,
+  goal: 'חיטוב',
+  activityLevel: 'מתונה',
+  coachName: 'שלהבת מחטבת',
+  coachPhone: '0542213199',
+};
+
 const useStore = create((set, get) => ({
   // ─── AUTH ───────────────────────────────────────────────
   isLoggedIn: false,
-  user: {
-    name: 'שלהבת',
-    email: '',
-    code: 'SHL001',
-    weight: 53.0,
-    height: 165,
-    age: 28,
-    goal: 'חיטוב',
-    activityLevel: 'מתונה',
-    coachName: 'שלהבת מחטבת',
-    coachPhone: '0542213199',
-  },
-  login: userData => set({ isLoggedIn: true, user: { ...get().user, ...userData } }),
-  logout: () => set({ isLoggedIn: false }),
+  user: { ...DEFAULT_USER },
+  login: userData => set({ isLoggedIn: true, user: { ...DEFAULT_USER, ...userData } }),
+  logout: () => set({ isLoggedIn: false, user: { ...DEFAULT_USER } }),
   updateUser: data => set({ user: { ...get().user, ...data } }),
 
   // ─── WEIGHT HISTORY ──────────────────────────────────────
@@ -97,7 +99,10 @@ const useStore = create((set, get) => ({
     if (!diary[dateKey]) diary[dateKey] = { breakfast: [], lunch: [], dinner: [], snacks: [] };
     diary[dateKey] = {
       ...diary[dateKey],
-      [mealType]: [...diary[dateKey][mealType], { ...item, id: `fd-${Date.now()}-${Math.random().toString(36).slice(2, 6)}` }],
+      [mealType]: [
+        ...diary[dateKey][mealType],
+        { ...item, id: `fd-${Date.now()}-${Math.random().toString(36).slice(2, 6)}` },
+      ],
     };
     set({ foodDiary: diary });
   },

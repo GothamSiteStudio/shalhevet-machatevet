@@ -20,7 +20,14 @@ import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { COLORS } from '../theme/colors';
 import { usersAPI } from '../services/api';
-import { FOOD_DATABASE, searchFoods, calculateNutrition } from '../data/foodDatabase';
+import {
+  FOOD_DATABASE,
+  searchFoods,
+  calculateNutrition,
+  formatFoodPortion,
+  getFoodMeasurementConfig,
+  getFoodReferenceText,
+} from '../data/foodDatabase';
 import { getFoodDiaryDateKey, normalizeFoodDiaryEntry } from '../utils/foodDiary';
 
 const MEAL_CONFIG = {
@@ -33,8 +40,18 @@ const MEAL_CONFIG = {
 function getHebrewDate(date) {
   const days = ['ראשון', 'שני', 'שלישי', 'רביעי', 'חמישי', 'שישי', 'שבת'];
   const months = [
-    'ינואר', 'פברואר', 'מרץ', 'אפריל', 'מאי', 'יוני',
-    'יולי', 'אוגוסט', 'ספטמבר', 'אוקטובר', 'נובמבר', 'דצמבר',
+    'ינואר',
+    'פברואר',
+    'מרץ',
+    'אפריל',
+    'מאי',
+    'יוני',
+    'יולי',
+    'אוגוסט',
+    'ספטמבר',
+    'אוקטובר',
+    'נובמבר',
+    'דצמבר',
   ];
   return `יום ${days[date.getDay()]}, ${date.getDate()} ${months[date.getMonth()]}`;
 }
@@ -47,7 +64,7 @@ function createDiaryItemId() {
 function AddFoodModal({ visible, onClose, onAdd, mealType }) {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedFood, setSelectedFood] = useState(null);
-  const [grams, setGrams] = useState('100');
+  const [quantity, setQuantity] = useState('100');
   const [customName, setCustomName] = useState('');
   const [customCalories, setCustomCalories] = useState('');
   const [customProtein, setCustomProtein] = useState('');
@@ -61,15 +78,23 @@ function AddFoodModal({ visible, onClose, onAdd, mealType }) {
     return searchFoods(searchQuery);
   }, [searchQuery, mode]);
 
+  const measurementConfig = useMemo(
+    () => (selectedFood ? getFoodMeasurementConfig(selectedFood) : null),
+    [selectedFood]
+  );
+
   const calculated = useMemo(() => {
     if (!selectedFood) return null;
-    return calculateNutrition(selectedFood, Number(grams) || 100);
-  }, [selectedFood, grams]);
+    return calculateNutrition(
+      selectedFood,
+      Number(quantity) || measurementConfig?.defaultAmount || 1
+    );
+  }, [measurementConfig, quantity, selectedFood]);
 
   const resetAndClose = useCallback(() => {
     setSearchQuery('');
     setSelectedFood(null);
-    setGrams('100');
+    setQuantity('100');
     setCustomName('');
     setCustomCalories('');
     setCustomProtein('');
@@ -80,10 +105,13 @@ function AddFoodModal({ visible, onClose, onAdd, mealType }) {
   }, [onClose]);
 
   const handleAddFromDB = () => {
-    if (!selectedFood || !calculated) return;
+    if (!selectedFood || !calculated || !measurementConfig) return;
+
+    const safeQuantity = Number(quantity) || measurementConfig.defaultAmount || 1;
+
     onAdd({
       name: selectedFood.name,
-      portion: `${grams} גרם`,
+      portion: formatFoodPortion(selectedFood, safeQuantity),
       calories: calculated.calories,
       protein: calculated.protein,
       carbs: calculated.carbs,
@@ -126,9 +154,7 @@ function AddFoodModal({ visible, onClose, onAdd, mealType }) {
             <TouchableOpacity onPress={resetAndClose}>
               <Ionicons name="close" size={24} color={COLORS.textSecondary} />
             </TouchableOpacity>
-            <Text style={styles.modalTitle}>
-              הוסף ל{config.label}
-            </Text>
+            <Text style={styles.modalTitle}>הוסף ל{config.label}</Text>
             <View style={{ width: 24 }} />
           </View>
 
@@ -136,7 +162,10 @@ function AddFoodModal({ visible, onClose, onAdd, mealType }) {
           <View style={styles.modeToggle}>
             <TouchableOpacity
               style={[styles.modeBtn, mode === 'search' && styles.modeBtnActive]}
-              onPress={() => { setMode('search'); setSelectedFood(null); }}
+              onPress={() => {
+                setMode('search');
+                setSelectedFood(null);
+              }}
             >
               <Text style={[styles.modeBtnText, mode === 'search' && styles.modeBtnTextActive]}>
                 חיפוש מאגר
@@ -144,7 +173,10 @@ function AddFoodModal({ visible, onClose, onAdd, mealType }) {
             </TouchableOpacity>
             <TouchableOpacity
               style={[styles.modeBtn, mode === 'custom' && styles.modeBtnActive]}
-              onPress={() => { setMode('custom'); setSelectedFood(null); }}
+              onPress={() => {
+                setMode('custom');
+                setSelectedFood(null);
+              }}
             >
               <Text style={[styles.modeBtnText, mode === 'custom' && styles.modeBtnTextActive]}>
                 הזנה ידנית
@@ -178,14 +210,18 @@ function AddFoodModal({ visible, onClose, onAdd, mealType }) {
                     <Text style={styles.selectedBackText}>חזרה לרשימה</Text>
                   </TouchableOpacity>
                   <Text style={styles.selectedName}>{selectedFood.name}</Text>
-                  <Text style={styles.selectedUnit}>יחידה: {selectedFood.unit}</Text>
+                  <Text style={styles.selectedUnit}>
+                    חישוב לפי: {getFoodReferenceText(selectedFood)}
+                  </Text>
 
                   <View style={styles.gramsRow}>
-                    <Text style={styles.gramsLabel}>כמות בגרמים:</Text>
+                    <Text style={styles.gramsLabel}>
+                      {measurementConfig?.inputLabel || 'כמות'}:
+                    </Text>
                     <TextInput
                       style={styles.gramsInput}
-                      value={grams}
-                      onChangeText={setGrams}
+                      value={quantity}
+                      onChangeText={setQuantity}
                       keyboardType="numeric"
                       selectTextOnFocus
                     />
@@ -241,14 +277,12 @@ function AddFoodModal({ visible, onClose, onAdd, mealType }) {
                       style={styles.foodItem}
                       onPress={() => {
                         setSelectedFood(item);
-                        setGrams('100');
+                        setQuantity(String(getFoodMeasurementConfig(item).defaultAmount));
                       }}
                     >
                       <View style={styles.foodItemRight}>
                         <Text style={styles.foodItemName}>{item.name}</Text>
-                        <Text style={styles.foodItemMeta}>
-                          {item.calories} קל׳ · {item.unit}
-                        </Text>
+                        <Text style={styles.foodItemMeta}>{getFoodReferenceText(item)}</Text>
                       </View>
                       <View style={styles.foodItemMacros}>
                         <Text style={[styles.foodItemMacro, { color: '#42A5F5' }]}>
@@ -268,7 +302,11 @@ function AddFoodModal({ visible, onClose, onAdd, mealType }) {
             </>
           ) : (
             /* Custom Entry Mode */
-            <ScrollView style={styles.customForm} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+            <ScrollView
+              style={styles.customForm}
+              showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
+            >
               <TextInput
                 style={styles.customInput}
                 placeholder="שם המאכל *"
@@ -331,12 +369,15 @@ function AddFoodModal({ visible, onClose, onAdd, mealType }) {
 function MealTile({ mealType, items, onAdd, onRemove }) {
   const [expanded, setExpanded] = useState(false);
   const config = MEAL_CONFIG[mealType];
-  const totals = useMemo(() => ({
-    calories: items.reduce((s, i) => s + (i.calories || 0), 0),
-    protein: items.reduce((s, i) => s + (i.protein || 0), 0),
-    carbs: items.reduce((s, i) => s + (i.carbs || 0), 0),
-    fat: items.reduce((s, i) => s + (i.fat || 0), 0),
-  }), [items]);
+  const totals = useMemo(
+    () => ({
+      calories: items.reduce((s, i) => s + (i.calories || 0), 0),
+      protein: items.reduce((s, i) => s + (i.protein || 0), 0),
+      carbs: items.reduce((s, i) => s + (i.carbs || 0), 0),
+      fat: items.reduce((s, i) => s + (i.fat || 0), 0),
+    }),
+    [items]
+  );
 
   return (
     <View style={[styles.mealTile, { borderColor: config.color + '44' }]}>
@@ -495,10 +536,7 @@ export default function FoodDiaryScreen({ navigation }) {
   const handleAddItem = item => {
     const nextMeals = {
       ...diary,
-      [activeMealType]: [
-        ...diary[activeMealType],
-        { ...item, id: item.id || createDiaryItemId() },
-      ],
+      [activeMealType]: [...diary[activeMealType], { ...item, id: item.id || createDiaryItemId() }],
     };
 
     saveDiary(nextMeals);
@@ -549,7 +587,7 @@ export default function FoodDiaryScreen({ navigation }) {
       saveDiary(nextMeals);
       Alert.alert(
         '📸 צילום נוסף!',
-        'הצילום נוסף לנשנושים. בקרוב נשלב AI שמזהה אוכל ומחשב קלוריות אוטומטית!',
+        'הצילום נוסף לנשנושים. בקרוב נשלב AI שמזהה אוכל ומחשב קלוריות אוטומטית!'
       );
     }
   };
@@ -584,9 +622,7 @@ export default function FoodDiaryScreen({ navigation }) {
           </TouchableOpacity>
           <View style={styles.dateCenter}>
             <Text style={styles.dateText}>{getHebrewDate(currentDate)}</Text>
-            {getFoodDiaryDateKey() === dateKey && (
-              <Text style={styles.dateTodayBadge}>היום</Text>
-            )}
+            {getFoodDiaryDateKey() === dateKey && <Text style={styles.dateTodayBadge}>היום</Text>}
           </View>
           <TouchableOpacity onPress={() => goDate(-1)} style={styles.dateArrow}>
             <Ionicons name="chevron-forward" size={22} color={COLORS.textSecondary} />
@@ -604,9 +640,7 @@ export default function FoodDiaryScreen({ navigation }) {
         <View style={styles.summaryCard}>
           <Text style={styles.summaryTitle}>סיכום יומי</Text>
           <Text style={styles.summarySubtitle}>
-            {syncing
-              ? 'מסנכרן עכשיו למאמנת...'
-              : 'היומן נשמר אוטומטית ומופיע גם למאמנת.'}
+            {syncing ? 'מסנכרן עכשיו למאמנת...' : 'היומן נשמר אוטומטית ומופיע גם למאמנת.'}
           </Text>
           <View style={styles.summaryRow}>
             <View style={styles.summaryItem}>
@@ -790,7 +824,13 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
   },
   mealTileHeaderRight: { flexDirection: 'row-reverse', alignItems: 'center', gap: 10 },
-  mealTileIcon: { width: 42, height: 42, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+  mealTileIcon: {
+    width: 42,
+    height: 42,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   mealTileName: { color: COLORS.white, fontSize: 16, fontWeight: '600' },
   mealTileHeaderCenter: { flex: 1, alignItems: 'center' },
   mealTileCalories: { color: COLORS.primary, fontSize: 15, fontWeight: '700' },
@@ -804,7 +844,12 @@ const styles = StyleSheet.create({
   tinyMacro: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8 },
   tinyMacroText: { fontSize: 11, fontWeight: '600' },
   mealTileBody: { paddingHorizontal: 14, paddingBottom: 6 },
-  emptyMealText: { color: COLORS.textMuted, fontSize: 13, textAlign: 'center', paddingVertical: 10 },
+  emptyMealText: {
+    color: COLORS.textMuted,
+    fontSize: 13,
+    textAlign: 'center',
+    paddingVertical: 10,
+  },
   mealTileAddBtn: {
     alignItems: 'center',
     paddingVertical: 12,
@@ -827,7 +872,13 @@ const styles = StyleSheet.create({
   diaryItemPortion: { color: COLORS.textSecondary, fontSize: 11, textAlign: 'right' },
   diaryItemCenter: { alignItems: 'center' },
   diaryItemCalories: { color: COLORS.primary, fontSize: 13, fontWeight: '700' },
-  diaryItemPhoto: { width: 50, height: 38, borderRadius: 8, marginTop: 4, backgroundColor: COLORS.cardLight },
+  diaryItemPhoto: {
+    width: 50,
+    height: 38,
+    borderRadius: 8,
+    marginTop: 4,
+    backgroundColor: COLORS.cardLight,
+  },
 
   // Snacks Divider
   snacksDivider: {
@@ -890,7 +941,13 @@ const styles = StyleSheet.create({
     marginBottom: 10,
     gap: 8,
   },
-  searchInput: { flex: 1, color: COLORS.white, fontSize: 15, paddingVertical: 12, textAlign: 'right' },
+  searchInput: {
+    flex: 1,
+    color: COLORS.white,
+    fontSize: 15,
+    paddingVertical: 12,
+    textAlign: 'right',
+  },
 
   // Food List
   foodList: { maxHeight: 350 },

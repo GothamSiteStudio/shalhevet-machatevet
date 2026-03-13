@@ -45,6 +45,7 @@ const {
   getAllMessages,
   addMessage,
   listFoodDiaryEntries,
+  saveFoodDiaryEntry,
   getAllCoachMeals,
   getCoachMealById,
   createCoachMeal,
@@ -61,6 +62,12 @@ function asyncHandler(handler) {
   return (req, res, next) => {
     Promise.resolve(handler(req, res, next)).catch(next);
   };
+}
+
+const FOOD_DIARY_MEAL_TYPES = ["breakfast", "lunch", "dinner", "snacks"];
+
+function isValidDateKey(value) {
+  return /^\d{4}-\d{2}-\d{2}$/.test(String(value || "").trim());
 }
 
 function createBadRequest(message) {
@@ -84,6 +91,12 @@ function parseOptionalNumber(value, fieldName) {
   }
 
   return parsed;
+}
+
+function parseOptionalInteger(value, fieldName) {
+  const parsed = parseOptionalNumber(value, fieldName);
+  if (parsed === undefined || parsed === null) return parsed;
+  return Math.trunc(parsed);
 }
 
 function parseOptionalText(value) {
@@ -343,6 +356,65 @@ function buildWorkoutPlanPayload(body) {
   return payload;
 }
 
+function buildFoodDiaryMeals(body) {
+  const source =
+    body?.meals && typeof body.meals === "object"
+      ? body.meals
+      : body && typeof body === "object"
+        ? body
+        : {};
+
+  return FOOD_DIARY_MEAL_TYPES.reduce(
+    (accumulator, mealType) => {
+      accumulator[mealType] = Array.isArray(source[mealType])
+        ? source[mealType].map((item, index) => {
+            const name = parseOptionalText(item?.name) || "";
+            if (!name) {
+              throw createBadRequest(
+                `חסר שם לפריט מספר ${index + 1} ב${mealType}`,
+              );
+            }
+
+            return {
+              id:
+                item?.id || `food-diary-${mealType}-${Date.now()}-${index + 1}`,
+              name,
+              portion: parseOptionalText(item?.portion) || "",
+              calories:
+                parseOptionalNumber(
+                  item?.calories,
+                  `${mealType}[${index}].calories`,
+                ) ?? 0,
+              protein:
+                parseOptionalNumber(
+                  item?.protein,
+                  `${mealType}[${index}].protein`,
+                ) ?? 0,
+              carbs:
+                parseOptionalNumber(
+                  item?.carbs,
+                  `${mealType}[${index}].carbs`,
+                ) ?? 0,
+              fat:
+                parseOptionalNumber(item?.fat, `${mealType}[${index}].fat`) ??
+                0,
+              source: parseOptionalText(item?.source) || "coach",
+              photoUri: parseOptionalText(item?.photoUri) || "",
+            };
+          })
+        : [];
+
+      return accumulator;
+    },
+    {
+      breakfast: [],
+      lunch: [],
+      dinner: [],
+      snacks: [],
+    },
+  );
+}
+
 // ─── GET /api/coach/clients - כל הלקוחות ────────────────────────────────────
 router.get(
   "/clients",
@@ -514,6 +586,72 @@ router.put("/clients/:id/nutrition-plan", async (req, res) => {
   }
 });
 
+// ─── GET /api/coach/clients/:id/food-diary - יומן אכילה של לקוחה ──────────
+router.get(
+  "/clients/:id/food-diary",
+  asyncHandler(async (req, res) => {
+    const client = await getClientOrNull(req.params.id);
+
+    if (!client) {
+      return res.status(404).json({ error: "לקוחה לא נמצאה" });
+    }
+
+    const requestedDate = req.query.date
+      ? String(req.query.date).trim()
+      : new Date().toISOString().split("T")[0];
+
+    if (!isValidDateKey(requestedDate)) {
+      return res.status(400).json({ error: "תאריך לא תקין" });
+    }
+
+    const includeRecent = req.query.includeRecent !== "false";
+    const recentLimit = Math.max(
+      1,
+      Math.min(Number(req.query.recentLimit) || 7, 31),
+    );
+
+    const [entry, recentEntries] = await Promise.all([
+      getFoodDiaryEntry(client.id, requestedDate),
+      includeRecent
+        ? listFoodDiaryEntries(client.id, recentLimit)
+        : Promise.resolve([]),
+    ]);
+
+    res.json({ success: true, entry, recentEntries });
+  }),
+);
+
+// ─── PUT /api/coach/clients/:id/food-diary/:date - עדכון יומן אכילה ──────
+router.put("/clients/:id/food-diary/:date", async (req, res) => {
+  try {
+    const client = await getClientOrNull(req.params.id);
+
+    if (!client) {
+      return res.status(404).json({ error: "לקוחה לא נמצאה" });
+    }
+
+    const requestedDate = String(req.params.date || "").trim();
+    if (!isValidDateKey(requestedDate)) {
+      return res.status(400).json({ error: "תאריך לא תקין" });
+    }
+
+    const entry = await saveFoodDiaryEntry(client.id, requestedDate, {
+      meals: buildFoodDiaryMeals(req.body || {}),
+    });
+
+    res.json({
+      success: true,
+      message: "יומן האכילה עודכן ✅",
+      entry,
+      recentEntries: await listFoodDiaryEntries(client.id, 7),
+    });
+  } catch (err) {
+    res
+      .status(err.status || 500)
+      .json({ error: err.message || "שגיאה בעדכון יומן האכילה" });
+  }
+});
+
 // ─── GET /api/coach/clients/:id/workout-plan - תוכנית אימון ────────────────
 router.get(
   "/clients/:id/workout-plan",
@@ -600,9 +738,15 @@ router.put("/clients/:id", async (req, res) => {
 
     const normalizedPhone = parseOptionalText(phone);
     if (normalizedPhone !== undefined) updates.phone = normalizedPhone;
-    if (weight !== undefined) updates.weight = parseFloat(weight);
-    if (height !== undefined) updates.height = parseFloat(height);
-    if (age !== undefined) updates.age = parseInt(age);
+
+    const normalizedWeight = parseOptionalNumber(weight, "weight");
+    if (normalizedWeight !== undefined) updates.weight = normalizedWeight;
+
+    const normalizedHeight = parseOptionalNumber(height, "height");
+    if (normalizedHeight !== undefined) updates.height = normalizedHeight;
+
+    const normalizedAge = parseOptionalInteger(age, "age");
+    if (normalizedAge !== undefined) updates.age = normalizedAge;
 
     const normalizedGoal = parseOptionalText(goal);
     if (normalizedGoal !== undefined) updates.goal = normalizedGoal;
@@ -860,7 +1004,21 @@ router.get(
 // ─── POST /api/coach/meals - הוספת ארוחה למאגר ──────────────────────────────
 router.post("/meals", async (req, res) => {
   try {
-    const { title, category, description, imageUrl, calories, protein, carbs, fat, servings, portion, ingredients, instructions, items } = req.body;
+    const {
+      title,
+      category,
+      description,
+      imageUrl,
+      calories,
+      protein,
+      carbs,
+      fat,
+      servings,
+      portion,
+      ingredients,
+      instructions,
+      items,
+    } = req.body;
 
     if (!title || !String(title).trim()) {
       return res.status(400).json({ error: "שם הארוחה הוא שדה חובה" });
@@ -884,9 +1042,13 @@ router.post("/meals", async (req, res) => {
     });
 
     console.log(`✅ מאמנת הוסיפה ארוחה למאגר: ${meal.title}`);
-    res.status(201).json({ success: true, message: `${meal.title} נוספה למאגר! ✅`, meal });
+    res
+      .status(201)
+      .json({ success: true, message: `${meal.title} נוספה למאגר! ✅`, meal });
   } catch (err) {
-    res.status(err.status || 500).json({ error: err.message || "שגיאה בהוספת ארוחה" });
+    res
+      .status(err.status || 500)
+      .json({ error: err.message || "שגיאה בהוספת ארוחה" });
   }
 });
 
@@ -898,7 +1060,21 @@ router.put("/meals/:id", async (req, res) => {
       return res.status(404).json({ error: "ארוחה לא נמצאה" });
     }
 
-    const { title, category, description, imageUrl, calories, protein, carbs, fat, servings, portion, ingredients, instructions, items } = req.body;
+    const {
+      title,
+      category,
+      description,
+      imageUrl,
+      calories,
+      protein,
+      carbs,
+      fat,
+      servings,
+      portion,
+      ingredients,
+      instructions,
+      items,
+    } = req.body;
 
     const updates = {};
     if (title !== undefined) {
@@ -908,23 +1084,38 @@ router.put("/meals/:id", async (req, res) => {
       }
       updates.title = trimmedTitle;
     }
-    if (category !== undefined) updates.category = parseOptionalText(category) || "כללי";
-    if (description !== undefined) updates.description = parseOptionalText(description) || "";
-    if (imageUrl !== undefined) updates.imageUrl = imageUrl ? parseOptionalHttpUrl(imageUrl, "imageUrl") : "";
-    if (calories !== undefined) updates.calories = parseOptionalNumber(calories, "calories") ?? null;
-    if (protein !== undefined) updates.protein = parseOptionalNumber(protein, "protein") ?? null;
-    if (carbs !== undefined) updates.carbs = parseOptionalNumber(carbs, "carbs") ?? null;
-    if (fat !== undefined) updates.fat = parseOptionalNumber(fat, "fat") ?? null;
-    if (servings !== undefined) updates.servings = parseOptionalNumber(servings, "servings") ?? 1;
-    if (portion !== undefined) updates.portion = parseOptionalText(portion) || "";
-    if (ingredients !== undefined) updates.ingredients = Array.isArray(ingredients) ? ingredients : [];
-    if (instructions !== undefined) updates.instructions = Array.isArray(instructions) ? instructions : [];
+    if (category !== undefined)
+      updates.category = parseOptionalText(category) || "כללי";
+    if (description !== undefined)
+      updates.description = parseOptionalText(description) || "";
+    if (imageUrl !== undefined)
+      updates.imageUrl = imageUrl
+        ? parseOptionalHttpUrl(imageUrl, "imageUrl")
+        : "";
+    if (calories !== undefined)
+      updates.calories = parseOptionalNumber(calories, "calories") ?? null;
+    if (protein !== undefined)
+      updates.protein = parseOptionalNumber(protein, "protein") ?? null;
+    if (carbs !== undefined)
+      updates.carbs = parseOptionalNumber(carbs, "carbs") ?? null;
+    if (fat !== undefined)
+      updates.fat = parseOptionalNumber(fat, "fat") ?? null;
+    if (servings !== undefined)
+      updates.servings = parseOptionalNumber(servings, "servings") ?? 1;
+    if (portion !== undefined)
+      updates.portion = parseOptionalText(portion) || "";
+    if (ingredients !== undefined)
+      updates.ingredients = Array.isArray(ingredients) ? ingredients : [];
+    if (instructions !== undefined)
+      updates.instructions = Array.isArray(instructions) ? instructions : [];
     if (items !== undefined) updates.items = Array.isArray(items) ? items : [];
 
     const meal = await updateCoachMeal(req.params.id, updates);
     res.json({ success: true, message: `${meal.title} עודכנה ✅`, meal });
   } catch (err) {
-    res.status(err.status || 500).json({ error: err.message || "שגיאה בעדכון ארוחה" });
+    res
+      .status(err.status || 500)
+      .json({ error: err.message || "שגיאה בעדכון ארוחה" });
   }
 });
 

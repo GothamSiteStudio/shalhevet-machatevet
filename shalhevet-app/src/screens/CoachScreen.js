@@ -1,11 +1,22 @@
-import React, { useState } from 'react';
+import React, { useCallback, useState } from 'react';
 import {
-  View, Text, TouchableOpacity, StyleSheet,
-  ScrollView, Modal, TextInput, Alert, Linking, KeyboardAvoidingView, Platform,
+  View,
+  Text,
+  TouchableOpacity,
+  StyleSheet,
+  ScrollView,
+  Modal,
+  TextInput,
+  Alert,
+  Linking,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons, MaterialCommunityIcons, FontAwesome5 } from '@expo/vector-icons';
 import { COLORS } from '../theme/colors';
+import { usersAPI } from '../services/api';
 import useStore from '../store/useStore';
 
 function SectionHeader({ title, icon }) {
@@ -17,17 +28,22 @@ function SectionHeader({ title, icon }) {
   );
 }
 
-function MeetingRequestModal({ visible, onClose }) {
+function MeetingRequestModal({ visible, onClose, onSubmit, saving }) {
   const [date, setDate] = useState('');
   const [notes, setNotes] = useState('');
-  const requestMeeting = useStore((s) => s.requestMeeting);
 
-  const handleSubmit = () => {
-    if (!date) { Alert.alert('שגיאה', 'נא להזין תאריך מבוקש'); return; }
-    requestMeeting(date, notes);
-    onClose();
-    Alert.alert('✅ נשלח!', 'בקשת הפגישה נשלחה לשלהבת. היא תאשר בהקדם!');
-    setDate(''); setNotes('');
+  const handleSubmit = async () => {
+    if (!date) {
+      Alert.alert('שגיאה', 'נא להזין תאריך מבוקש');
+      return;
+    }
+    const success = await onSubmit(date, notes);
+    if (success) {
+      onClose();
+      Alert.alert('✅ נשלח!', 'בקשת הפגישה נשלחה לשלהבת. היא תאשר בהקדם!');
+      setDate('');
+      setNotes('');
+    }
   };
 
   return (
@@ -65,8 +81,8 @@ function MeetingRequestModal({ visible, onClose }) {
             <TouchableOpacity style={styles.cancelBtn} onPress={onClose}>
               <Text style={styles.cancelBtnText}>ביטול</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.submitBtn} onPress={handleSubmit}>
-              <Text style={styles.submitBtnText}>שלח בקשה</Text>
+            <TouchableOpacity style={styles.submitBtn} onPress={handleSubmit} disabled={saving}>
+              <Text style={styles.submitBtnText}>{saving ? 'שולח...' : 'שלח בקשה'}</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -75,16 +91,20 @@ function MeetingRequestModal({ visible, onClose }) {
   );
 }
 
-function UpdateFormModal({ visible, onClose }) {
+function UpdateFormModal({ visible, onClose, onSubmit, saving }) {
   const [text, setText] = useState('');
-  const sendUpdate = useStore((s) => s.sendUpdate);
 
-  const handleSubmit = () => {
-    if (!text.trim()) { Alert.alert('שגיאה', 'נא לכתוב עדכון'); return; }
-    sendUpdate(text.trim());
-    onClose();
-    Alert.alert('✅ נשלח!', 'העדכון נשלח לשלהבת בהצלחה!');
-    setText('');
+  const handleSubmit = async () => {
+    if (!text.trim()) {
+      Alert.alert('שגיאה', 'נא לכתוב עדכון');
+      return;
+    }
+    const success = await onSubmit(text.trim());
+    if (success) {
+      onClose();
+      Alert.alert('✅ נשלח!', 'העדכון נשלח לשלהבת בהצלחה!');
+      setText('');
+    }
   };
 
   return (
@@ -112,14 +132,32 @@ function UpdateFormModal({ visible, onClose }) {
             <TouchableOpacity style={styles.cancelBtn} onPress={onClose}>
               <Text style={styles.cancelBtnText}>ביטול</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.submitBtn} onPress={handleSubmit}>
-              <Text style={styles.submitBtnText}>שלח עדכון</Text>
+            <TouchableOpacity style={styles.submitBtn} onPress={handleSubmit} disabled={saving}>
+              <Text style={styles.submitBtnText}>{saving ? 'שולח...' : 'שלח עדכון'}</Text>
             </TouchableOpacity>
           </View>
         </View>
       </KeyboardAvoidingView>
     </Modal>
   );
+}
+
+function normalizeUpdate(update) {
+  return {
+    id: update?.id || `update-${update?.date || Date.now()}`,
+    date:
+      update?.date || update?.createdAt?.split('T')[0] || new Date().toISOString().split('T')[0],
+    summary: update?.summary || update?.text || '',
+  };
+}
+
+function normalizeMeeting(meeting) {
+  return {
+    id: meeting?.id || `meeting-${meeting?.requestedDate || Date.now()}`,
+    date: meeting?.date || meeting?.requestedDate || '',
+    notes: meeting?.notes || '',
+    status: meeting?.status || 'ממתין לאישור',
+  };
 }
 
 function PreviousUpdatesModal({ visible, onClose, updates }) {
@@ -151,21 +189,106 @@ function PreviousUpdatesModal({ visible, onClose, updates }) {
 }
 
 const TIPS = [
-  { id: 1, title: 'טיפ תזונה: חלבון בכל ארוחה', desc: 'שלבי מקור חלבון בכל ארוחה לשמירה על מסת שריר ותחושת שובע.' },
-  { id: 2, title: 'טיפ אימון: חימום חשוב!', desc: '5 דקות חימום לפני כל אימון מונעות פציעות ומשפרות ביצועים.' },
-  { id: 3, title: 'טיפ הרגלים: שנה בת-קיימא', desc: 'שינויים קטנים ועקביים > דיאטות קיצוניות. כל יום קטן מוביל לתוצאה גדולה.' },
+  {
+    id: 1,
+    title: 'טיפ תזונה: חלבון בכל ארוחה',
+    desc: 'שלבי מקור חלבון בכל ארוחה לשמירה על מסת שריר ותחושת שובע.',
+  },
+  {
+    id: 2,
+    title: 'טיפ אימון: חימום חשוב!',
+    desc: '5 דקות חימום לפני כל אימון מונעות פציעות ומשפרות ביצועים.',
+  },
+  {
+    id: 3,
+    title: 'טיפ הרגלים: שנה בת-קיימא',
+    desc: 'שינויים קטנים ועקביים > דיאטות קיצוניות. כל יום קטן מוביל לתוצאה גדולה.',
+  },
 ];
 
 export default function CoachScreen() {
-  const { user, coachingDaysLeft, previousUpdates, meetings } = useStore();
+  const { user, coachingDaysLeft } = useStore();
   const [showMeetingModal, setShowMeetingModal] = useState(false);
   const [showUpdateModal, setShowUpdateModal] = useState(false);
   const [showPrevUpdates, setShowPrevUpdates] = useState(false);
   const [showAIChat, setShowAIChat] = useState(false);
   const [aiMessage, setAiMessage] = useState('');
+  const [meetingSaving, setMeetingSaving] = useState(false);
+  const [updateSaving, setUpdateSaving] = useState(false);
+  const [syncNotice, setSyncNotice] = useState('');
+  const [previousUpdates, setPreviousUpdates] = useState([]);
+  const [meetings, setMeetings] = useState([]);
   const [aiMessages, setAiMessages] = useState([
-    { from: 'ai', text: 'שלום! אני העוזר הדיגיטלי של שלהבת 💪 איך אפשר לעזור לך היום?' }
+    { from: 'ai', text: 'שלום! אני העוזר הדיגיטלי של שלהבת 💪 איך אפשר לעזור לך היום?' },
   ]);
+
+  const loadCoachData = useCallback(async () => {
+    const [updatesResult, meetingsResult] = await Promise.allSettled([
+      usersAPI.getUpdates(),
+      usersAPI.getMeetings(),
+    ]);
+
+    if (updatesResult.status === 'fulfilled') {
+      setPreviousUpdates((updatesResult.value.updates || []).map(normalizeUpdate));
+    }
+
+    if (meetingsResult.status === 'fulfilled') {
+      setMeetings((meetingsResult.value.meetings || []).map(normalizeMeeting));
+    }
+
+    if (updatesResult.status === 'rejected') {
+      setSyncNotice(updatesResult.reason?.message || 'לא ניתן לטעון את העדכונים כרגע');
+      return;
+    }
+
+    if (meetingsResult.status === 'rejected') {
+      setSyncNotice(meetingsResult.reason?.message || 'לא ניתן לטעון את הפגישות כרגע');
+      return;
+    }
+
+    setSyncNotice('');
+  }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      loadCoachData();
+    }, [loadCoachData])
+  );
+
+  const handleMeetingRequest = async (date, notes) => {
+    setMeetingSaving(true);
+    try {
+      const result = await usersAPI.requestMeeting(date, notes);
+      const nextMeeting = normalizeMeeting(result.meeting || { requestedDate: date, notes });
+      setMeetings(current => [nextMeeting, ...current.filter(item => item.id !== nextMeeting.id)]);
+      setSyncNotice('');
+      return true;
+    } catch (err) {
+      Alert.alert('שגיאה', err.message || 'לא ניתן לשלוח בקשת פגישה כרגע');
+      return false;
+    } finally {
+      setMeetingSaving(false);
+    }
+  };
+
+  const handleSendUpdate = async text => {
+    setUpdateSaving(true);
+    try {
+      const result = await usersAPI.sendUpdate(text);
+      const nextUpdate = normalizeUpdate(result.update || { text });
+      setPreviousUpdates(current => [
+        nextUpdate,
+        ...current.filter(item => item.id !== nextUpdate.id),
+      ]);
+      setSyncNotice('');
+      return true;
+    } catch (err) {
+      Alert.alert('שגיאה', err.message || 'לא ניתן לשלוח את העדכון כרגע');
+      return false;
+    } finally {
+      setUpdateSaving(false);
+    }
+  };
 
   const openWhatsApp = () => {
     const phone = user.coachPhone || '0542213199';
@@ -181,7 +304,7 @@ export default function CoachScreen() {
     const userMsg = { from: 'user', text: aiMessage };
     const aiReply = {
       from: 'ai',
-      text: 'תודה על שאלתך! 💪 שלהבת תענה לך בהקדם. בינתיים - זכרי שכל צעד קטן מוביל לתוצאה גדולה!'
+      text: 'תודה על שאלתך! 💪 שלהבת תענה לך בהקדם. בינתיים - זכרי שכל צעד קטן מוביל לתוצאה גדולה!',
     };
     setAiMessages([...aiMessages, userMsg, aiReply]);
     setAiMessage('');
@@ -192,9 +315,19 @@ export default function CoachScreen() {
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.container}>
         <Text style={styles.pageTitle}>דף מאמן</Text>
 
+        {syncNotice ? (
+          <View style={styles.noticeCard}>
+            <Ionicons name="cloud-offline-outline" size={18} color={COLORS.warning} />
+            <Text style={styles.noticeText}>{syncNotice}</Text>
+          </View>
+        ) : null}
+
         {/* Communication Buttons */}
         <View style={styles.commRow}>
-          <TouchableOpacity style={[styles.commBtn, styles.aiChatBtn]} onPress={() => setShowAIChat(true)}>
+          <TouchableOpacity
+            style={[styles.commBtn, styles.aiChatBtn]}
+            onPress={() => setShowAIChat(true)}
+          >
             <MaterialCommunityIcons name="robot" size={22} color={COLORS.white} />
             <Text style={styles.commBtnText}>צ׳אט AI 24/7</Text>
           </TouchableOpacity>
@@ -228,10 +361,12 @@ export default function CoachScreen() {
         {/* Tips */}
         <View style={styles.card}>
           <SectionHeader title="טיפים ומדריכים" icon="bulb-outline" />
-          {TIPS.map((tip) => (
+          {TIPS.map(tip => (
             <TouchableOpacity key={tip.id} style={styles.tipItem} activeOpacity={0.7}>
               <View style={styles.tipContent}>
-                <Text style={styles.tipDesc} numberOfLines={2}>{tip.desc}</Text>
+                <Text style={styles.tipDesc} numberOfLines={2}>
+                  {tip.desc}
+                </Text>
                 <Text style={styles.tipTitle}>{tip.title}</Text>
               </View>
               <View style={styles.tipIcon}>
@@ -252,9 +387,12 @@ export default function CoachScreen() {
           ) : (
             meetings.map((m, i) => (
               <View key={i} style={styles.meetingItem}>
-                <View style={[styles.meetingStatus,
-                  m.status === 'אושר' ? styles.statusApproved : styles.statusPending
-                ]}>
+                <View
+                  style={[
+                    styles.meetingStatus,
+                    m.status === 'אושר' ? styles.statusApproved : styles.statusPending,
+                  ]}
+                >
                   <Text style={styles.meetingStatusText}>{m.status}</Text>
                 </View>
                 <View>
@@ -285,8 +423,18 @@ export default function CoachScreen() {
       </ScrollView>
 
       {/* Modals */}
-      <MeetingRequestModal visible={showMeetingModal} onClose={() => setShowMeetingModal(false)} />
-      <UpdateFormModal visible={showUpdateModal} onClose={() => setShowUpdateModal(false)} />
+      <MeetingRequestModal
+        visible={showMeetingModal}
+        onClose={() => setShowMeetingModal(false)}
+        onSubmit={handleMeetingRequest}
+        saving={meetingSaving}
+      />
+      <UpdateFormModal
+        visible={showUpdateModal}
+        onClose={() => setShowUpdateModal(false)}
+        onSubmit={handleSendUpdate}
+        saving={updateSaving}
+      />
       <PreviousUpdatesModal
         visible={showPrevUpdates}
         onClose={() => setShowPrevUpdates(false)}
@@ -294,7 +442,12 @@ export default function CoachScreen() {
       />
 
       {/* AI Chat Modal */}
-      <Modal visible={showAIChat} transparent animationType="slide" onRequestClose={() => setShowAIChat(false)}>
+      <Modal
+        visible={showAIChat}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowAIChat(false)}
+      >
         <KeyboardAvoidingView
           style={styles.chatModal}
           behavior={Platform.select({ ios: 'padding', android: 'height' })}
@@ -314,8 +467,16 @@ export default function CoachScreen() {
               keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
             >
               {aiMessages.map((msg, i) => (
-                <View key={i} style={[styles.chatBubble, msg.from === 'user' ? styles.userBubble : styles.aiBubble]}>
-                  <Text style={[styles.chatBubbleText, msg.from === 'user' && styles.userBubbleText]}>
+                <View
+                  key={i}
+                  style={[
+                    styles.chatBubble,
+                    msg.from === 'user' ? styles.userBubble : styles.aiBubble,
+                  ]}
+                >
+                  <Text
+                    style={[styles.chatBubbleText, msg.from === 'user' && styles.userBubbleText]}
+                  >
                     {msg.text}
                   </Text>
                 </View>
@@ -345,24 +506,56 @@ const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: COLORS.background },
   container: { paddingHorizontal: 16, paddingBottom: 40 },
   pageTitle: {
-    color: COLORS.white, fontSize: 22, fontWeight: 'bold',
-    textAlign: 'center', marginTop: 16, marginBottom: 20,
+    color: COLORS.white,
+    fontSize: 22,
+    fontWeight: 'bold',
+    textAlign: 'center',
+    marginTop: 16,
+    marginBottom: 20,
+  },
+  noticeCard: {
+    alignItems: 'center',
+    backgroundColor: COLORS.card,
+    borderColor: COLORS.border,
+    borderRadius: 14,
+    borderWidth: 1,
+    flexDirection: 'row-reverse',
+    gap: 8,
+    marginBottom: 12,
+    padding: 12,
+  },
+  noticeText: {
+    color: COLORS.textSecondary,
+    flex: 1,
+    fontSize: 13,
+    textAlign: 'right',
   },
   commRow: { flexDirection: 'row', gap: 12, marginBottom: 16 },
   commBtn: {
-    flex: 1, borderRadius: 14, paddingVertical: 16,
-    alignItems: 'center', justifyContent: 'center', gap: 8,
+    flex: 1,
+    borderRadius: 14,
+    paddingVertical: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
   },
   aiChatBtn: { backgroundColor: '#6A1B9A' },
   waBtn: { backgroundColor: '#1B5E20' },
   commBtnText: { color: COLORS.white, fontSize: 13, fontWeight: '600', textAlign: 'center' },
   card: {
-    backgroundColor: COLORS.card, borderRadius: 16, padding: 16,
-    marginBottom: 14, borderWidth: 1, borderColor: COLORS.border,
+    backgroundColor: COLORS.card,
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 14,
+    borderWidth: 1,
+    borderColor: COLORS.border,
   },
   sectionHeader: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end',
-    gap: 8, marginBottom: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    gap: 8,
+    marginBottom: 14,
   },
   sectionTitle: { color: COLORS.white, fontSize: 16, fontWeight: 'bold' },
   coachingProgress: { alignItems: 'center', marginBottom: 12 },
@@ -374,12 +567,20 @@ const styles = StyleSheet.create({
   progressBg: { height: 6, backgroundColor: COLORS.cardLight, borderRadius: 3, overflow: 'hidden' },
   progressFill: { height: '100%', backgroundColor: COLORS.primary, borderRadius: 3 },
   tipItem: {
-    flexDirection: 'row', alignItems: 'flex-start', gap: 12,
-    paddingVertical: 10, borderTopWidth: 1, borderTopColor: COLORS.border,
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 12,
+    paddingVertical: 10,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.border,
   },
   tipIcon: {
-    width: 36, height: 36, borderRadius: 18, backgroundColor: COLORS.warning + '22',
-    alignItems: 'center', justifyContent: 'center',
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: COLORS.warning + '22',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   tipContent: { flex: 1 },
   tipTitle: { color: COLORS.white, fontSize: 14, fontWeight: '600', textAlign: 'right' },
@@ -387,8 +588,13 @@ const styles = StyleSheet.create({
   emptySection: { alignItems: 'center', paddingVertical: 16, gap: 8 },
   emptyText: { color: COLORS.textMuted, fontSize: 14 },
   meetingItem: {
-    flexDirection: 'row', alignItems: 'center', gap: 12,
-    paddingVertical: 10, borderTopWidth: 1, borderTopColor: COLORS.border, justifyContent: 'flex-end',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: 10,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.border,
+    justifyContent: 'flex-end',
   },
   meetingDate: { color: COLORS.white, fontSize: 14, textAlign: 'right' },
   meetingNotes: { color: COLORS.textSecondary, fontSize: 12, textAlign: 'right' },
@@ -397,85 +603,163 @@ const styles = StyleSheet.create({
   statusPending: { backgroundColor: COLORS.warning + '33' },
   meetingStatusText: { fontSize: 11, fontWeight: '600', color: COLORS.white },
   actionBtn: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-    gap: 8, paddingVertical: 12, borderTopWidth: 1, borderTopColor: COLORS.border, marginTop: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 12,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.border,
+    marginTop: 8,
   },
   actionBtnText: { color: COLORS.primary, fontSize: 14, fontWeight: '500' },
   actionBtnFill: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-    gap: 8, backgroundColor: COLORS.primary, borderRadius: 12,
-    paddingVertical: 12, marginBottom: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: COLORS.primary,
+    borderRadius: 12,
+    paddingVertical: 12,
+    marginBottom: 8,
   },
   actionBtnFillText: { color: COLORS.white, fontSize: 14, fontWeight: '600' },
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'flex-end' },
   modalSheet: {
-    backgroundColor: COLORS.card, borderTopLeftRadius: 24, borderTopRightRadius: 24,
-    padding: 24, borderTopWidth: 1, borderColor: COLORS.border, flexShrink: 1, maxHeight: '88%',
+    backgroundColor: COLORS.card,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    padding: 24,
+    borderTopWidth: 1,
+    borderColor: COLORS.border,
+    flexShrink: 1,
+    maxHeight: '88%',
   },
   modalHandle: {
-    width: 40, height: 4, borderRadius: 2, backgroundColor: COLORS.border,
-    alignSelf: 'center', marginBottom: 20,
+    width: 40,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: COLORS.border,
+    alignSelf: 'center',
+    marginBottom: 20,
   },
-  modalTitle: { color: COLORS.white, fontSize: 20, fontWeight: 'bold', textAlign: 'center', marginBottom: 6 },
+  modalTitle: {
+    color: COLORS.white,
+    fontSize: 20,
+    fontWeight: 'bold',
+    textAlign: 'center',
+    marginBottom: 6,
+  },
   modalSub: { color: COLORS.textSecondary, fontSize: 14, textAlign: 'center', marginBottom: 20 },
   inputLabel: { color: COLORS.textSecondary, fontSize: 13, textAlign: 'right', marginBottom: 6 },
   input: {
-    backgroundColor: COLORS.inputBg, borderRadius: 12, padding: 14,
-    color: COLORS.white, fontSize: 14, borderWidth: 1, borderColor: COLORS.border,
-    marginBottom: 14, textAlign: 'right',
+    backgroundColor: COLORS.inputBg,
+    borderRadius: 12,
+    padding: 14,
+    color: COLORS.white,
+    fontSize: 14,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    marginBottom: 14,
+    textAlign: 'right',
   },
   inputMulti: { height: 90, textAlignVertical: 'top' },
   inputLarge: { height: 130, textAlignVertical: 'top' },
   modalBtns: { flexDirection: 'row', gap: 12 },
   cancelBtn: {
-    flex: 1, borderRadius: 12, paddingVertical: 14, alignItems: 'center',
-    borderWidth: 1, borderColor: COLORS.border,
+    flex: 1,
+    borderRadius: 12,
+    paddingVertical: 14,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: COLORS.border,
   },
   cancelBtnText: { color: COLORS.textSecondary, fontSize: 15 },
   submitBtn: {
-    flex: 2, borderRadius: 12, paddingVertical: 14, alignItems: 'center',
+    flex: 2,
+    borderRadius: 12,
+    paddingVertical: 14,
+    alignItems: 'center',
     backgroundColor: COLORS.primary,
   },
   submitBtnText: { color: COLORS.white, fontSize: 15, fontWeight: 'bold' },
   closeBtn: {
-    backgroundColor: COLORS.card, borderRadius: 12, paddingVertical: 14,
-    alignItems: 'center', marginTop: 16, borderWidth: 1, borderColor: COLORS.border,
+    backgroundColor: COLORS.card,
+    borderRadius: 12,
+    paddingVertical: 14,
+    alignItems: 'center',
+    marginTop: 16,
+    borderWidth: 1,
+    borderColor: COLORS.border,
   },
   closeBtnText: { color: COLORS.white, fontSize: 15 },
   updateCard: {
-    backgroundColor: COLORS.cardLight, borderRadius: 12, padding: 14,
-    marginBottom: 10, borderWidth: 1, borderColor: COLORS.border,
+    backgroundColor: COLORS.cardLight,
+    borderRadius: 12,
+    padding: 14,
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: COLORS.border,
   },
-  updateDate: { color: COLORS.primary, fontSize: 12, fontWeight: '600', marginBottom: 4, textAlign: 'right' },
+  updateDate: {
+    color: COLORS.primary,
+    fontSize: 12,
+    fontWeight: '600',
+    marginBottom: 4,
+    textAlign: 'right',
+  },
   updateSummary: { color: COLORS.white, fontSize: 14, textAlign: 'right', lineHeight: 20 },
   chatModal: { flex: 1, backgroundColor: COLORS.background },
   chatHeader: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    padding: 16, borderBottomWidth: 1, borderBottomColor: COLORS.border,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
   },
   chatClose: { padding: 4 },
   chatTitle: { color: COLORS.white, fontSize: 18, fontWeight: 'bold' },
   chatMessages: { flex: 1 },
   chatBubble: {
-    maxWidth: '80%', padding: 12, borderRadius: 16,
-    backgroundColor: COLORS.card, alignSelf: 'flex-start',
+    maxWidth: '80%',
+    padding: 12,
+    borderRadius: 16,
+    backgroundColor: COLORS.card,
+    alignSelf: 'flex-start',
   },
   aiBubble: { borderBottomLeftRadius: 4 },
   userBubble: {
-    alignSelf: 'flex-end', backgroundColor: COLORS.primary, borderBottomRightRadius: 4,
+    alignSelf: 'flex-end',
+    backgroundColor: COLORS.primary,
+    borderBottomRightRadius: 4,
   },
   chatBubbleText: { color: COLORS.white, fontSize: 14, lineHeight: 20, textAlign: 'right' },
   userBubbleText: { textAlign: 'right' },
   chatInputRow: {
-    flexDirection: 'row', alignItems: 'center', padding: 12, gap: 10,
-    borderTopWidth: 1, borderTopColor: COLORS.border,
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 12,
+    gap: 10,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.border,
   },
   chatInput: {
-    flex: 1, backgroundColor: COLORS.inputBg, borderRadius: 24, paddingHorizontal: 16,
-    paddingVertical: 10, color: COLORS.white, fontSize: 14, textAlign: 'right',
+    flex: 1,
+    backgroundColor: COLORS.inputBg,
+    borderRadius: 24,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    color: COLORS.white,
+    fontSize: 14,
+    textAlign: 'right',
   },
   sendBtn: {
-    width: 44, height: 44, borderRadius: 22, backgroundColor: COLORS.primary,
-    alignItems: 'center', justifyContent: 'center',
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: COLORS.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 });

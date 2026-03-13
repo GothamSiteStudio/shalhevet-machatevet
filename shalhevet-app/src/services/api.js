@@ -128,6 +128,21 @@ export const coachAPI = {
   getClientNutritionPlan: id => apiRequest('GET', `/coach/clients/${id}/nutrition-plan`),
   updateClientNutritionPlan: (id, data) =>
     apiRequest('PUT', `/coach/clients/${id}/nutrition-plan`, data),
+  getClientFoodDiary: (id, date, options = {}) => {
+    const query = [];
+    if (date) query.push(`date=${encodeURIComponent(date)}`);
+    if (options.includeRecent !== false) query.push('includeRecent=true');
+    if (options.recentLimit) {
+      query.push(`recentLimit=${encodeURIComponent(options.recentLimit)}`);
+    }
+
+    return apiRequest(
+      'GET',
+      `/coach/clients/${id}/food-diary${query.length ? `?${query.join('&')}` : ''}`
+    );
+  },
+  updateClientFoodDiary: (id, date, data) =>
+    apiRequest('PUT', `/coach/clients/${id}/food-diary/${date}`, data),
   getClientWorkoutPlan: id => apiRequest('GET', `/coach/clients/${id}/workout-plan`),
   updateClientWorkoutPlan: (id, data) =>
     apiRequest('PUT', `/coach/clients/${id}/workout-plan`, data),
