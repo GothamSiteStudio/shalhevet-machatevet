@@ -12,7 +12,14 @@ export const Button = ({
   icon,
   style,
   textStyle,
-  disabled
+  disabled,
+  accessibilityLabel,
+  accessibilityHint,
+  accessibilityRole = 'button',
+  accessibilityState,
+  accessible = true,
+  testID,
+  ...props
 }) => {
   const handlePress = () => {
     if (disabled) return;
@@ -35,7 +42,6 @@ export const Button = ({
       justifyContent: 'center',
       flexDirection: 'row',
       opacity: disabled ? 0.5 : 1,
-      ...style
     };
   };
 
@@ -55,23 +61,37 @@ export const Button = ({
       fontWeight: '600',
       color,
       fontFamily: theme.typography.fontFamily.medium,
-      marginLeft: icon ? theme.spacing.sm : 0,
-      ...textStyle
+      marginStart: icon ? theme.spacing.sm : 0,
     };
+  };
+
+  const touchableProps = {
+    onPress: handlePress,
+    disabled,
+    accessible,
+    accessibilityRole,
+    accessibilityLabel: accessibilityLabel || title,
+    accessibilityHint,
+    accessibilityState: {
+      ...(accessibilityState || {}),
+      disabled: !!disabled,
+    },
+    testID,
+    ...props,
   };
 
   // כפתור ראשי עם גרדיאנט
   if (variant === 'primary') {
     return (
-      <TouchableOpacity onPress={handlePress} activeOpacity={0.8} disabled={disabled}>
+      <TouchableOpacity {...touchableProps} activeOpacity={0.8}>
         <LinearGradient
           colors={theme.colors.gradientPrimary}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 0 }}
-          style={[getContainerStyle(), theme.shadows.glow]} // אפקט הילה (Glow)
+          style={[getContainerStyle(), theme.shadows.glow, style]} // אפקט הילה (Glow)
         >
           {icon}
-          <Text style={getTextStyle()}>{title}</Text>
+          <Text style={[getTextStyle(), textStyle]}>{title}</Text>
         </LinearGradient>
       </TouchableOpacity>
     );
@@ -82,13 +102,14 @@ export const Button = ({
     getContainerStyle(),
     variant === 'secondary' && { backgroundColor: theme.colors.cardLight },
     variant === 'outline' && { borderWidth: 1, borderColor: theme.colors.primary },
-    variant === 'ghost' && { backgroundColor: 'transparent' }
+    variant === 'ghost' && { backgroundColor: 'transparent' },
+    style,
   ];
 
   return (
-    <TouchableOpacity onPress={handlePress} activeOpacity={0.7} style={staticContainerStyles} disabled={disabled}>
+    <TouchableOpacity {...touchableProps} activeOpacity={0.7} style={staticContainerStyles}>
       {icon}
-      <Text style={getTextStyle()}>{title}</Text>
+      <Text style={[getTextStyle(), textStyle]}>{title}</Text>
     </TouchableOpacity>
   );
 };

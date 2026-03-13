@@ -11,6 +11,7 @@ import {
   Platform,
   Alert,
   ActivityIndicator,
+  AccessibilityInfo,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -23,28 +24,80 @@ export default function LoginScreen({ navigation }) {
   const [password, setPassword] = useState('');
   const [showPass, setShowPass] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [passwordHelpLoading, setPasswordHelpLoading] = useState(false);
+  const [formMessage, setFormMessage] = useState(null);
   const login = useStore(s => s.login);
   const passwordRef = useRef(null);
 
+  const updateFormMessage = (text, type = 'error') => {
+    const nextMessage = text ? { text, type } : null;
+    setFormMessage(nextMessage);
+
+    if (text) {
+      AccessibilityInfo.announceForAccessibility(text);
+    }
+  };
+
+  const handleEmailChange = value => {
+    setEmail(value);
+    if (formMessage) {
+      setFormMessage(null);
+    }
+  };
+
+  const handlePasswordChange = value => {
+    setPassword(value);
+    if (formMessage) {
+      setFormMessage(null);
+    }
+  };
+
   const handleLogin = async () => {
-    if (!email || !password) {
-      Alert.alert('שגיאה', 'נא למלא אימייל וסיסמה');
+    const trimmedEmail = email.trim().toLowerCase();
+
+    if (!trimmedEmail || !password) {
+      updateFormMessage('נא למלא אימייל וסיסמה');
       return;
     }
+
     setLoading(true);
+    updateFormMessage(null);
+
     try {
-      const result = await authAPI.login(email, password);
+      const result = await authAPI.login(trimmedEmail, password);
       await tokenStorage.save(result.token);
       login(result.user);
     } catch (err) {
-      Alert.alert('שגיאת כניסה', err.message || 'אימייל או סיסמה שגויים');
+      updateFormMessage(err.message || 'אימייל או סיסמה שגויים');
     } finally {
       setLoading(false);
     }
   };
 
+  const handleForgotPassword = async () => {
+    const trimmedEmail = email.trim().toLowerCase();
+
+    if (!trimmedEmail || !trimmedEmail.includes('@')) {
+      updateFormMessage('כדי לשחזר סיסמה יש להזין קודם כתובת אימייל תקינה');
+      return;
+    }
+
+    setPasswordHelpLoading(true);
+    updateFormMessage(null);
+
+    try {
+      const result = await authAPI.forgotPassword(trimmedEmail);
+      updateFormMessage(result.message || 'הנחיות לאיפוס סיסמה נשלחו', 'success');
+    } catch (err) {
+      updateFormMessage(err.message || 'לא ניתן לשלוח כרגע הנחיות לאיפוס סיסמה');
+    } finally {
+      setPasswordHelpLoading(false);
+    }
+  };
+
   const handleDemo = () => {
     tokenStorage.remove().finally(() => {
+      updateFormMessage(null);
       login({
         id: 'demo-user',
         email: 'demo@shalhevet.com',
@@ -98,6 +151,33 @@ export default function LoginScreen({ navigation }) {
               כניסה לאפליקציה
             </Text>
 
+            {formMessage ? (
+              <View
+                style={[
+                  styles.formMessage,
+                  formMessage.type === 'success' ? styles.formMessageSuccess : styles.formMessageError,
+                ]}
+                accessible={true}
+                accessibilityLiveRegion="polite"
+              >
+                <Ionicons
+                  name={formMessage.type === 'success' ? 'checkmark-circle-outline' : 'alert-circle-outline'}
+                  size={18}
+                  color={formMessage.type === 'success' ? COLORS.success : COLORS.danger}
+                  style={styles.formMessageIcon}
+                  accessible={false}
+                />
+                <Text
+                  style={[
+                    styles.formMessageText,
+                    formMessage.type === 'success' ? styles.formMessageTextSuccess : styles.formMessageTextError,
+                  ]}
+                >
+                  {formMessage.text}
+                </Text>
+              </View>
+            ) : null}
+
             {/* Email Input */}
             <View style={styles.inputWrapper}>
               <Ionicons
@@ -112,10 +192,11 @@ export default function LoginScreen({ navigation }) {
                 placeholder="אימייל"
                 placeholderTextColor={COLORS.textMuted}
                 value={email}
-                onChangeText={setEmail}
+                onChangeText={handleEmailChange}
                 keyboardType="email-address"
                 autoCapitalize="none"
                 autoComplete="email"
+                autoCorrect={false}
                 textContentType="emailAddress"
                 textAlign="right"
                 returnKeyType="next"
@@ -123,7 +204,6 @@ export default function LoginScreen({ navigation }) {
                 accessible={true}
                 accessibilityLabel="שדה אימייל"
                 accessibilityHint="הזיני את כתובת האימייל שלך"
-                accessibilityRole="none"
               />
             </View>
 
@@ -151,28 +231,33 @@ export default function LoginScreen({ navigation }) {
                 placeholder="סיסמה"
                 placeholderTextColor={COLORS.textMuted}
                 value={password}
-                onChangeText={setPassword}
+                onChangeText={handlePasswordChange}
                 secureTextEntry={!showPass}
                 textContentType="password"
                 autoComplete="password"
+                autoCorrect={false}
                 textAlign="right"
                 returnKeyType="done"
                 onSubmitEditing={handleLogin}
                 accessible={true}
                 accessibilityLabel="שדה סיסמה"
                 accessibilityHint="הזיני את הסיסמה שלך"
-                accessibilityRole="none"
               />
             </View>
 
             <TouchableOpacity
               style={styles.forgotBtn}
+              onPress={handleForgotPassword}
+              disabled={loading || passwordHelpLoading}
               accessible={true}
               accessibilityLabel="שכחתי סיסמה - לחצי לקבלת עזרה"
               accessibilityRole="button"
+              accessibilityState={{ disabled: loading || passwordHelpLoading, busy: passwordHelpLoading }}
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             >
-              <Text style={styles.forgotText}>שכחתי סיסמה</Text>
+              <Text style={[styles.forgotText, loading || passwordHelpLoading && styles.forgotTextDisabled]}>
+                {passwordHelpLoading ? 'שולח הנחיות...' : 'שכחתי סיסמה'}
+              </Text>
             </TouchableOpacity>
 
             {/* Login Button */}
@@ -346,6 +431,42 @@ const styles = StyleSheet.create({
   forgotText: {
     color: COLORS.primary,
     fontSize: 13,
+  },
+  forgotTextDisabled: {
+    opacity: 0.7,
+  },
+  formMessage: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderRadius: 12,
+    borderWidth: 1,
+    marginBottom: 14,
+    minHeight: 48,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  formMessageError: {
+    backgroundColor: '#3A1616',
+    borderColor: '#7F2C2C',
+  },
+  formMessageSuccess: {
+    backgroundColor: '#17331D',
+    borderColor: '#2F6F3C',
+  },
+  formMessageIcon: {
+    marginLeft: 8,
+  },
+  formMessageText: {
+    flex: 1,
+    fontSize: 13,
+    fontWeight: '500',
+    textAlign: 'right',
+  },
+  formMessageTextError: {
+    color: COLORS.danger,
+  },
+  formMessageTextSuccess: {
+    color: COLORS.success,
   },
   loginBtn: {
     backgroundColor: COLORS.primary,

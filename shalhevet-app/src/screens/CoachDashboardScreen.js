@@ -24,6 +24,7 @@ import {
   RefreshControl,
   KeyboardAvoidingView,
   Platform,
+  AccessibilityInfo,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -51,8 +52,26 @@ function ClientCard({ client, onPress }) {
     .map(n => n[0])
     .join('')
     .substring(0, 2);
+
+  const accessibilityLabel = [
+    client.name,
+    client.isActive ? 'לקוחה פעילה' : 'לקוחה לא פעילה',
+    client.goal ? `מטרה ${client.goal}` : null,
+    client.weight ? `משקל ${client.weight} קילוגרם` : null,
+  ]
+    .filter(Boolean)
+    .join(', ');
+
   return (
-    <TouchableOpacity style={styles.clientCard} onPress={onPress} activeOpacity={0.7}>
+    <TouchableOpacity
+      style={styles.clientCard}
+      onPress={onPress}
+      activeOpacity={0.7}
+      accessible={true}
+      accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel}
+      accessibilityHint="לחצי לפתיחת פרטי הלקוחה, עדכון יעדים ותוכניות"
+    >
       <View style={styles.clientInfo}>
         <View>
           <Text style={styles.clientName}>{client.name}</Text>
@@ -90,48 +109,121 @@ function AddClientModal({ visible, onClose, onAdded }) {
   const [password, setPassword] = useState('');
   const [phone, setPhone] = useState('');
   const [loading, setLoading] = useState(false);
+  const [formMessage, setFormMessage] = useState(null);
+
+  const resetForm = useCallback(() => {
+    setName('');
+    setEmail('');
+    setPassword('');
+    setPhone('');
+    setFormMessage(null);
+  }, []);
+
+  const showFormMessage = (text, type = 'error') => {
+    const nextMessage = text ? { text, type } : null;
+    setFormMessage(nextMessage);
+
+    if (text) {
+      AccessibilityInfo.announceForAccessibility(text);
+    }
+
+    return false;
+  };
+
+  useEffect(() => {
+    if (!visible) {
+      resetForm();
+    }
+  }, [resetForm, visible]);
 
   const handleAdd = async () => {
-    if (!name || !email || !password) {
-      Alert.alert('שגיאה', 'שם, אימייל וסיסמה הם שדות חובה');
-      return;
-    }
+    if (!name.trim()) return showFormMessage('נא להזין שם מלא');
+    if (!email.trim() || !email.includes('@')) return showFormMessage('נא להזין אימייל תקין');
+    if (!password || password.length < 6) return showFormMessage('הסיסמה חייבת להיות לפחות 6 תווים');
+
     setLoading(true);
+    setFormMessage(null);
+
     try {
-      await coachAPI.addClient({ name, email, password, phone });
-      Alert.alert('✅ נוסף!', `${name} נוספה למערכת`);
-      setName('');
-      setEmail('');
-      setPassword('');
-      setPhone('');
+      await coachAPI.addClient({
+        name: name.trim(),
+        email: email.trim().toLowerCase(),
+        password,
+        phone: phone.trim(),
+      });
+      Alert.alert('✅ נוסף!', `${name.trim()} נוספה למערכת`);
+      resetForm();
       onAdded();
       onClose();
     } catch (err) {
-      Alert.alert('שגיאה', err.message);
+      showFormMessage(err.message || 'לא ניתן להוסיף לקוחה כרגע');
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+    <Modal
+      visible={visible}
+      transparent
+      animationType="slide"
+      onRequestClose={onClose}
+      accessibilityViewIsModal={true}
+    >
       <KeyboardAvoidingView
         style={styles.modalOverlay}
         behavior={Platform.select({ ios: 'padding', android: 'height' })}
       >
         <View style={styles.modalSheet}>
           <View style={styles.modalHandle} />
-          <Text style={styles.modalTitle}>הוספת לקוחה חדשה</Text>
+          <Text style={styles.modalTitle} accessibilityRole="header">הוספת לקוחה חדשה</Text>
           <Text style={styles.modalSub}>המאמנת פותחת חשבון ישירות</Text>
 
+          {formMessage ? (
+            <View
+              style={[
+                styles.formMessage,
+                formMessage.type === 'success' ? styles.formMessageSuccess : styles.formMessageError,
+              ]}
+              accessible={true}
+              accessibilityLiveRegion="polite"
+            >
+              <Ionicons
+                name={formMessage.type === 'success' ? 'checkmark-circle-outline' : 'alert-circle-outline'}
+                size={18}
+                color={formMessage.type === 'success' ? COLORS.success : COLORS.danger}
+                style={styles.formMessageIcon}
+                accessible={false}
+              />
+              <Text
+                style={[
+                  styles.formMessageText,
+                  formMessage.type === 'success' ? styles.formMessageTextSuccess : styles.formMessageTextError,
+                ]}
+              >
+                {formMessage.text}
+              </Text>
+            </View>
+          ) : null}
+
           {[
-            { label: 'שם מלא *', value: name, setter: setName, placeholder: 'שם פרטי ומשפחה' },
+            {
+              label: 'שם מלא *',
+              value: name,
+              setter: setName,
+              placeholder: 'שם פרטי ומשפחה',
+              autoComplete: 'name',
+              textContentType: 'name',
+            },
             {
               label: 'אימייל *',
               value: email,
               setter: setEmail,
               placeholder: 'email@gmail.com',
               keyboard: 'email-address',
+              autoCapitalize: 'none',
+              autoComplete: 'email',
+              textContentType: 'emailAddress',
             },
             {
               label: 'סיסמה זמנית *',
@@ -139,6 +231,9 @@ function AddClientModal({ visible, onClose, onAdded }) {
               setter: setPassword,
               placeholder: 'לפחות 6 תווים',
               secure: true,
+              autoCapitalize: 'none',
+              autoComplete: 'new-password',
+              textContentType: 'newPassword',
             },
             {
               label: 'טלפון',
@@ -146,6 +241,8 @@ function AddClientModal({ visible, onClose, onAdded }) {
               setter: setPhone,
               placeholder: '050-0000000',
               keyboard: 'phone-pad',
+              autoComplete: 'tel',
+              textContentType: 'telephoneNumber',
             },
           ].map(field => (
             <View key={field.label} style={{ marginBottom: 12 }}>
@@ -153,24 +250,47 @@ function AddClientModal({ visible, onClose, onAdded }) {
               <TextInput
                 style={styles.input}
                 value={field.value}
-                onChangeText={field.setter}
+                onChangeText={value => {
+                  if (formMessage) {
+                    setFormMessage(null);
+                  }
+                  field.setter(value);
+                }}
                 placeholder={field.placeholder}
                 placeholderTextColor={COLORS.textMuted}
                 keyboardType={field.keyboard || 'default'}
                 secureTextEntry={field.secure}
                 textAlign="right"
-                autoCapitalize="none"
+                autoCapitalize={field.autoCapitalize || 'sentences'}
+                autoComplete={field.autoComplete}
+                autoCorrect={false}
+                textContentType={field.textContentType}
+                accessibilityLabel={field.label}
               />
             </View>
           ))}
 
           <View style={styles.modalBtns}>
-            <TouchableOpacity style={styles.cancelBtn} onPress={onClose}>
+            <TouchableOpacity
+              style={styles.cancelBtn}
+              onPress={onClose}
+              accessible={true}
+              accessibilityRole="button"
+              accessibilityLabel="ביטול הוספת לקוחה"
+            >
               <Text style={styles.cancelBtnText}>ביטול</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.submitBtn} onPress={handleAdd} disabled={loading}>
+            <TouchableOpacity
+              style={styles.submitBtn}
+              onPress={handleAdd}
+              disabled={loading}
+              accessible={true}
+              accessibilityRole="button"
+              accessibilityLabel="הוספת לקוחה חדשה"
+              accessibilityState={{ disabled: loading, busy: loading }}
+            >
               {loading ? (
-                <ActivityIndicator color={COLORS.white} />
+                <ActivityIndicator color={COLORS.white} accessible={false} />
               ) : (
                 <Text style={styles.submitBtnText}>הוספה</Text>
               )}
@@ -1052,6 +1172,34 @@ const styles = StyleSheet.create({
   emptyText: { color: COLORS.textMuted, fontSize: 13, textAlign: 'center' },
 
   emptyTitle: { color: COLORS.white, fontSize: 18, fontWeight: 'bold' },
+  formMessage: {
+    alignItems: 'center',
+    borderRadius: 12,
+    borderWidth: 1,
+    flexDirection: 'row',
+    marginBottom: 12,
+    minHeight: 48,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  formMessageError: {
+    backgroundColor: '#3A1616',
+    borderColor: '#7F2C2C',
+  },
+  formMessageSuccess: {
+    backgroundColor: '#17331D',
+    borderColor: '#2F6F3C',
+  },
+  formMessageIcon: { marginLeft: 8 },
+  formMessageText: {
+    color: COLORS.white,
+    flex: 1,
+    fontSize: 13,
+    fontWeight: '500',
+    textAlign: 'right',
+  },
+  formMessageTextError: { color: COLORS.danger },
+  formMessageTextSuccess: { color: COLORS.success },
   fieldLabel: { color: COLORS.textSecondary, fontSize: 12, marginBottom: 4, textAlign: 'right' },
   header: {
     alignItems: 'center',
