@@ -30,6 +30,21 @@ const TABS = [
   { id: 'goals', label: 'יעדים', icon: 'flag-outline' },
   { id: 'nutrition', label: 'תזונה', icon: 'restaurant-outline' },
   { id: 'workout', label: 'אימונים', icon: 'barbell-outline' },
+  { id: 'habits', label: 'הרגלים', icon: 'checkbox-outline' },
+  { id: 'checkin', label: 'צ׳ק-אין', icon: 'clipboard-outline' },
+];
+
+const HABIT_FREQUENCY_OPTIONS = [
+  { id: 'daily', label: 'יומי' },
+  { id: 'weekly', label: 'שבועי' },
+];
+
+const CHECK_IN_QUESTION_TYPES = [
+  { id: 'shortText', label: 'טקסט קצר' },
+  { id: 'longText', label: 'טקסט ארוך' },
+  { id: 'number', label: 'מספר' },
+  { id: 'yesNo', label: 'כן / לא' },
+  { id: 'scale', label: 'דירוג 1-5' },
 ];
 
 const RECIPE_CATEGORY_ALL = 'הכל';
@@ -70,9 +85,41 @@ function createEmptyAccountForm() {
     goal: '',
     activityLevel: '',
     notes: '',
+    coachStatus: '',
+    coachTagsText: '',
     newPassword: '',
     confirmNewPassword: '',
     isActive: true,
+  };
+}
+
+function createEmptyHabit() {
+  return {
+    id: makeId('habit'),
+    title: '',
+    frequency: 'daily',
+    targetCount: '1',
+    notes: '',
+    isActive: true,
+  };
+}
+
+function createEmptyCheckInQuestion() {
+  return {
+    id: makeId('check-in-question'),
+    label: '',
+    type: 'shortText',
+    placeholder: '',
+    helperText: '',
+    required: true,
+  };
+}
+
+function createEmptyCheckInTemplateForm() {
+  return {
+    title: '',
+    intro: '',
+    questions: [],
   };
 }
 
@@ -251,6 +298,40 @@ function mapWorkoutToForm(plan) {
   };
 }
 
+function mapHabitAssignmentsToForm(habits) {
+  if (!Array.isArray(habits)) return [];
+
+  return habits.map(habit => ({
+    id: habit.id || makeId('habit'),
+    title: habit.title || '',
+    frequency: habit.frequency || 'daily',
+    targetCount: toInputValue(habit.targetCount || 1),
+    notes: habit.notes || '',
+    isActive: habit.isActive !== false,
+  }));
+}
+
+function mapCheckInTemplateToForm(template) {
+  const empty = createEmptyCheckInTemplateForm();
+
+  if (!template) return empty;
+
+  return {
+    title: template.title || '',
+    intro: template.intro || '',
+    questions: Array.isArray(template.questions)
+      ? template.questions.map(question => ({
+          id: question.id || makeId('check-in-question'),
+          label: question.label || '',
+          type: question.type || 'shortText',
+          placeholder: question.placeholder || '',
+          helperText: question.helperText || '',
+          required: question.required !== false,
+        }))
+      : [],
+  };
+}
+
 function serializeGoals(form) {
   return {
     weightGoalKg: form.weightGoalKg,
@@ -277,6 +358,8 @@ function mapClientToAccountForm(client) {
     goal: client.goal || '',
     activityLevel: client.activityLevel || '',
     notes: client.notes || '',
+    coachStatus: client.coachStatus || '',
+    coachTagsText: Array.isArray(client.coachTags) ? client.coachTags.join(', ') : '',
     newPassword: '',
     confirmNewPassword: '',
     isActive: client.isActive !== false,
@@ -320,6 +403,11 @@ function serializeAccount(form) {
     goal: form.goal.trim(),
     activityLevel: form.activityLevel.trim(),
     notes: form.notes.trim(),
+    coachStatus: form.coachStatus.trim(),
+    coachTags: form.coachTagsText
+      .split(',')
+      .map(tag => tag.trim())
+      .filter(Boolean),
     isActive: form.isActive,
   };
 
@@ -329,6 +417,32 @@ function serializeAccount(form) {
   }
 
   return payload;
+}
+
+function serializeHabits(form) {
+  return form.map(habit => ({
+    id: habit.id,
+    title: habit.title.trim(),
+    frequency: habit.frequency,
+    targetCount: habit.targetCount,
+    notes: habit.notes.trim(),
+    isActive: habit.isActive,
+  }));
+}
+
+function serializeCheckInTemplate(form) {
+  return {
+    title: form.title.trim(),
+    intro: form.intro.trim(),
+    questions: form.questions.map(question => ({
+      id: question.id,
+      label: question.label.trim(),
+      type: question.type,
+      placeholder: question.placeholder.trim(),
+      helperText: question.helperText.trim(),
+      required: question.required,
+    })),
+  };
 }
 
 function serializeNutrition(form) {
@@ -427,6 +541,44 @@ function validateWorkout(form) {
   return null;
 }
 
+function validateHabits(form) {
+  for (let habitIndex = 0; habitIndex < form.length; habitIndex += 1) {
+    const habit = form[habitIndex];
+    if (!habit.title.trim()) {
+      return `חסר שם להרגל מספר ${habitIndex + 1}`;
+    }
+
+    if (habit.targetCount && Number.isNaN(Number(habit.targetCount))) {
+      return `יעד הכמות של ${habit.title.trim()} חייב להיות מספר`;
+    }
+  }
+
+  return null;
+}
+
+function validateCheckInTemplate(form) {
+  for (let questionIndex = 0; questionIndex < form.questions.length; questionIndex += 1) {
+    const question = form.questions[questionIndex];
+    if (!question.label.trim()) {
+      return `חסר טקסט לשאלת צ׳ק-אין מספר ${questionIndex + 1}`;
+    }
+  }
+
+  return null;
+}
+
+function formatCheckInAnswerValue(answer) {
+  if (answer?.type === 'yesNo') {
+    return answer.value ? 'כן' : 'לא';
+  }
+
+  if (answer?.type === 'scale') {
+    return `${answer.value}/5`;
+  }
+
+  return String(answer?.value ?? '');
+}
+
 function sortFoodDiaryEntries(entries) {
   return [...entries].sort((first, second) =>
     String(second?.date || '').localeCompare(String(first?.date || ''))
@@ -519,6 +671,9 @@ export default function CoachClientPlansModal({ visible, clientId, onClose, onSa
   const [goalsForm, setGoalsForm] = useState(createEmptyGoalsForm());
   const [nutritionForm, setNutritionForm] = useState(createEmptyNutritionForm());
   const [workoutForm, setWorkoutForm] = useState(createEmptyWorkoutForm());
+  const [habitForm, setHabitForm] = useState([]);
+  const [checkInTemplateForm, setCheckInTemplateForm] = useState(createEmptyCheckInTemplateForm());
+  const [latestCheckInEntry, setLatestCheckInEntry] = useState(null);
   const [recipeQuery, setRecipeQuery] = useState('');
   const [activeRecipeCategory, setActiveRecipeCategory] = useState(RECIPE_CATEGORY_ALL);
 
@@ -536,6 +691,9 @@ export default function CoachClientPlansModal({ visible, clientId, onClose, onSa
     setGoalsForm(createEmptyGoalsForm());
     setNutritionForm(createEmptyNutritionForm());
     setWorkoutForm(createEmptyWorkoutForm());
+    setHabitForm([]);
+    setCheckInTemplateForm(createEmptyCheckInTemplateForm());
+    setLatestCheckInEntry(null);
     setRecipeQuery('');
     setActiveRecipeCategory(RECIPE_CATEGORY_ALL);
     setCoachMeals([]);
@@ -608,6 +766,9 @@ export default function CoachClientPlansModal({ visible, clientId, onClose, onSa
       setGoalsForm(mapGoalsToForm(result.goals));
       setNutritionForm(mapNutritionToForm(result.nutritionPlan));
       setWorkoutForm(mapWorkoutToForm(result.workoutPlan));
+      setHabitForm(mapHabitAssignmentsToForm(result.client?.habitAssignments));
+      setCheckInTemplateForm(mapCheckInTemplateToForm(result.client?.checkInTemplate));
+      setLatestCheckInEntry(result.latestCheckInEntry || null);
       const recentEntries = Array.isArray(result.foodDiaryEntries)
         ? result.foodDiaryEntries.map(entry => normalizeFoodDiaryEntry(entry, entry?.date))
         : [];
@@ -822,6 +983,47 @@ export default function CoachClientPlansModal({ visible, clientId, onClose, onSa
     setWorkoutForm(current => ({ ...current, [field]: value }));
   };
 
+  const addHabit = () => {
+    setHabitForm(current => [...current, createEmptyHabit()]);
+  };
+
+  const removeHabit = habitId => {
+    setHabitForm(current => current.filter(habit => habit.id !== habitId));
+  };
+
+  const updateHabitField = (habitId, field, value) => {
+    setHabitForm(current =>
+      current.map(habit => (habit.id === habitId ? { ...habit, [field]: value } : habit))
+    );
+  };
+
+  const updateCheckInTemplateField = (field, value) => {
+    setCheckInTemplateForm(current => ({ ...current, [field]: value }));
+  };
+
+  const addCheckInQuestion = () => {
+    setCheckInTemplateForm(current => ({
+      ...current,
+      questions: [...current.questions, createEmptyCheckInQuestion()],
+    }));
+  };
+
+  const removeCheckInQuestion = questionId => {
+    setCheckInTemplateForm(current => ({
+      ...current,
+      questions: current.questions.filter(question => question.id !== questionId),
+    }));
+  };
+
+  const updateCheckInQuestionField = (questionId, field, value) => {
+    setCheckInTemplateForm(current => ({
+      ...current,
+      questions: current.questions.map(question =>
+        question.id === questionId ? { ...question, [field]: value } : question
+      ),
+    }));
+  };
+
   const updateWorkoutTarget = (field, value) => {
     setWorkoutForm(current => ({
       ...current,
@@ -913,6 +1115,22 @@ export default function CoachClientPlansModal({ visible, clientId, onClose, onSa
       }
     }
 
+    if (activeTab === 'habits') {
+      const validationMessage = validateHabits(habitForm);
+      if (validationMessage) {
+        Alert.alert('שגיאה', validationMessage);
+        return;
+      }
+    }
+
+    if (activeTab === 'checkin') {
+      const validationMessage = validateCheckInTemplate(checkInTemplateForm);
+      if (validationMessage) {
+        Alert.alert('שגיאה', validationMessage);
+        return;
+      }
+    }
+
     setSaving(true);
     try {
       if (activeTab === 'account') {
@@ -954,6 +1172,24 @@ export default function CoachClientPlansModal({ visible, clientId, onClose, onSa
         );
         setWorkoutForm(mapWorkoutToForm(result.workoutPlan));
         Alert.alert('✅ נשמר', 'תוכנית האימון עודכנה בהצלחה');
+      }
+
+      if (activeTab === 'habits') {
+        const result = await coachAPI.updateClient(clientId, {
+          habitAssignments: serializeHabits(habitForm),
+        });
+        setClient(result.client || null);
+        setHabitForm(mapHabitAssignmentsToForm(result.client?.habitAssignments));
+        Alert.alert('✅ נשמר', 'ההרגלים והמשימות עודכנו בהצלחה');
+      }
+
+      if (activeTab === 'checkin') {
+        const result = await coachAPI.updateClient(clientId, {
+          checkInTemplate: serializeCheckInTemplate(checkInTemplateForm),
+        });
+        setClient(result.client || null);
+        setCheckInTemplateForm(mapCheckInTemplateToForm(result.client?.checkInTemplate));
+        Alert.alert('✅ נשמר', 'טופס הצ׳ק-אין עודכן בהצלחה');
       }
 
       if (onSaved) onSaved();
@@ -1192,6 +1428,26 @@ export default function CoachClientPlansModal({ visible, clientId, onClose, onSa
             האימייל החדש.
           </Text>
         </View>
+      </SectionCard>
+
+      <SectionCard
+        title="ניהול ליווי"
+        subtitle="סטטוס פנימי ותגיות שיעזרו לך לסנן ולנהל את הלקוחה בלוח הבקרה"
+        icon="pricetags-outline"
+      >
+        <Field
+          label="סטטוס ליווי"
+          value={accountForm.coachStatus}
+          onChangeText={value => updateAccountField('coachStatus', value)}
+          placeholder="למשל: צריכה חיזוק / במסלול / רדומה"
+        />
+        <Field
+          label="תגיות"
+          value={accountForm.coachTagsText}
+          onChangeText={value => updateAccountField('coachTagsText', value)}
+          placeholder="למשל: חיטוב, חדשה, VIP"
+        />
+        <Text style={styles.helperText}>הפרידי תגיות בפסיקים. דוגמה: חיטוב, שיקום, חדשה</Text>
       </SectionCard>
 
       <SectionCard
@@ -1984,10 +2240,356 @@ export default function CoachClientPlansModal({ visible, clientId, onClose, onSa
     </>
   );
 
+  const renderHabitsTab = () => {
+    const activeHabits = habitForm.filter(habit => habit.isActive);
+    const dailyHabits = activeHabits.filter(habit => habit.frequency === 'daily');
+    const weeklyHabits = activeHabits.filter(habit => habit.frequency === 'weekly');
+
+    return (
+      <>
+        <SectionCard
+          title="הרגלים ומשימות"
+          subtitle="המאמנת מגדירה מעקב יומי או שבועי שהלקוחה יכולה לסמן באפליקציה"
+          actionLabel="הוסיפי הרגל"
+          onActionPress={addHabit}
+          icon="checkbox-outline"
+        >
+          <View style={styles.summaryChipsRow}>
+            <SummaryChip label="פעילים" value={activeHabits.length} color={COLORS.primary} />
+            <SummaryChip label="יומיים" value={dailyHabits.length} color={COLORS.info} />
+            <SummaryChip label="שבועיים" value={weeklyHabits.length} color={COLORS.accent} />
+          </View>
+
+          {habitForm.length === 0 ? (
+            <Text style={styles.emptyStateText}>
+              עדיין לא הוגדרו הרגלים. הוסיפי משימות כמו מים, צעדים, חלבון או הליכות.
+            </Text>
+          ) : (
+            habitForm.map((habit, habitIndex) => (
+              <View key={habit.id} style={styles.innerCard}>
+                <View style={styles.nestedCardHeader}>
+                  <TouchableOpacity
+                    onPress={() => removeHabit(habit.id)}
+                    style={styles.removeBtn}
+                  >
+                    <Ionicons name="trash-outline" size={16} color={COLORS.danger} />
+                    <Text style={styles.removeBtnText}>הסרה</Text>
+                  </TouchableOpacity>
+                  <Text style={styles.innerCardTitle}>הרגל {habitIndex + 1}</Text>
+                </View>
+
+                <Field
+                  label="שם ההרגל"
+                  value={habit.title}
+                  onChangeText={value => updateHabitField(habit.id, 'title', value)}
+                  placeholder="למשל: 2 ליטר מים ביום"
+                />
+
+                <View style={styles.twoColumns}>
+                  <View style={styles.flexField}>
+                    <Field
+                      label="יעד כמות"
+                      value={habit.targetCount}
+                      onChangeText={value => updateHabitField(habit.id, 'targetCount', value)}
+                      placeholder="1"
+                      keyboardType="numeric"
+                    />
+                  </View>
+                  <View style={styles.flexField}>
+                    <Text style={styles.fieldLabel}>תדירות</Text>
+                    <View style={styles.choiceChipsRow}>
+                      {HABIT_FREQUENCY_OPTIONS.map(option => (
+                        <TouchableOpacity
+                          key={option.id}
+                          style={[
+                            styles.choiceChip,
+                            habit.frequency === option.id && styles.choiceChipActive,
+                          ]}
+                          onPress={() => updateHabitField(habit.id, 'frequency', option.id)}
+                        >
+                          <Text
+                            style={[
+                              styles.choiceChipText,
+                              habit.frequency === option.id && styles.choiceChipTextActive,
+                            ]}
+                          >
+                            {option.label}
+                          </Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  </View>
+                </View>
+
+                <Field
+                  label="הערות ללקוחה"
+                  value={habit.notes}
+                  onChangeText={value => updateHabitField(habit.id, 'notes', value)}
+                  placeholder="מה בדיוק לסמן, דגשים או תזכורת קצרה"
+                  multiline
+                />
+
+                <View style={styles.fieldGroup}>
+                  <Text style={styles.fieldLabel}>מצב הרגל</Text>
+                  <View style={styles.accountStatusRow}>
+                    <TouchableOpacity
+                      style={[
+                        styles.accountStatusBtn,
+                        habit.isActive && styles.accountStatusBtnActive,
+                      ]}
+                      onPress={() => updateHabitField(habit.id, 'isActive', true)}
+                    >
+                      <Ionicons
+                        name="checkmark-circle-outline"
+                        size={18}
+                        color={habit.isActive ? COLORS.success : COLORS.textMuted}
+                      />
+                      <Text
+                        style={[
+                          styles.accountStatusBtnText,
+                          habit.isActive && styles.accountStatusBtnTextActive,
+                        ]}
+                      >
+                        פעיל
+                      </Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[
+                        styles.accountStatusBtn,
+                        !habit.isActive && styles.accountStatusBtnInactive,
+                      ]}
+                      onPress={() => updateHabitField(habit.id, 'isActive', false)}
+                    >
+                      <Ionicons
+                        name="pause-circle-outline"
+                        size={18}
+                        color={!habit.isActive ? COLORS.warning : COLORS.textMuted}
+                      />
+                      <Text
+                        style={[
+                          styles.accountStatusBtnText,
+                          !habit.isActive && styles.accountStatusBtnTextInactive,
+                        ]}
+                      >
+                        מושהה
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              </View>
+            ))
+          )}
+        </SectionCard>
+      </>
+    );
+  };
+
+  const renderCheckInTab = () => {
+    const requiredQuestions = checkInTemplateForm.questions.filter(question => question.required);
+
+    return (
+      <>
+        <SectionCard
+          title="טופס צ׳ק-אין שבועי"
+          subtitle="בני טופס שהלקוחה ממלאת מתוך האפליקציה. ההגשה הראשונה של כל שבוע מגיעה גם לעדכונים."
+          actionLabel="הוסיפי שאלה"
+          onActionPress={addCheckInQuestion}
+          icon="clipboard-outline"
+        >
+          <Field
+            label="כותרת הטופס"
+            value={checkInTemplateForm.title}
+            onChangeText={value => updateCheckInTemplateField('title', value)}
+            placeholder="למשל: צ׳ק-אין שבועי לשלהבת"
+          />
+          <Field
+            label="פתיח ללקוחה"
+            value={checkInTemplateForm.intro}
+            onChangeText={value => updateCheckInTemplateField('intro', value)}
+            placeholder="כתבי הנחיה קצרה למה חשוב להתייחס במילוי"
+            multiline
+          />
+
+          <View style={styles.summaryChipsRow}>
+            <SummaryChip
+              label="שאלות"
+              value={checkInTemplateForm.questions.length}
+              color={COLORS.primary}
+            />
+            <SummaryChip label="חובה" value={requiredQuestions.length} color={COLORS.info} />
+            <SummaryChip
+              label="סטטוס"
+              value={checkInTemplateForm.questions.length > 0 ? 'מוכן' : 'טיוטה'}
+              color={COLORS.accent}
+            />
+          </View>
+
+          {checkInTemplateForm.questions.length === 0 ? (
+            <Text style={styles.emptyStateText}>
+              עדיין אין שאלות. הוסיפי שאלות כמו משקל, היענות, שינה, אנרגיה או קושי עיקרי.
+            </Text>
+          ) : (
+            checkInTemplateForm.questions.map((question, questionIndex) => (
+              <View key={question.id} style={styles.innerCard}>
+                <View style={styles.nestedCardHeader}>
+                  <TouchableOpacity
+                    onPress={() => removeCheckInQuestion(question.id)}
+                    style={styles.removeBtn}
+                  >
+                    <Ionicons name="trash-outline" size={16} color={COLORS.danger} />
+                    <Text style={styles.removeBtnText}>הסרה</Text>
+                  </TouchableOpacity>
+                  <Text style={styles.innerCardTitle}>שאלה {questionIndex + 1}</Text>
+                </View>
+
+                <Field
+                  label="טקסט השאלה"
+                  value={question.label}
+                  onChangeText={value => updateCheckInQuestionField(question.id, 'label', value)}
+                  placeholder="למשל: איך הרגשת השבוע?"
+                />
+
+                <Text style={styles.fieldLabel}>סוג תשובה</Text>
+                <View style={styles.choiceChipsWrap}>
+                  {CHECK_IN_QUESTION_TYPES.map(option => (
+                    <TouchableOpacity
+                      key={option.id}
+                      style={[
+                        styles.choiceChip,
+                        question.type === option.id && styles.choiceChipActive,
+                      ]}
+                      onPress={() => updateCheckInQuestionField(question.id, 'type', option.id)}
+                    >
+                      <Text
+                        style={[
+                          styles.choiceChipText,
+                          question.type === option.id && styles.choiceChipTextActive,
+                        ]}
+                      >
+                        {option.label}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+
+                <Field
+                  label="Placeholder"
+                  value={question.placeholder}
+                  onChangeText={value =>
+                    updateCheckInQuestionField(question.id, 'placeholder', value)
+                  }
+                  placeholder="טקסט עזר קצר בתוך השדה"
+                />
+                <Field
+                  label="טקסט עזר"
+                  value={question.helperText}
+                  onChangeText={value =>
+                    updateCheckInQuestionField(question.id, 'helperText', value)
+                  }
+                  placeholder="לדוגמה: צייני מספר מדויק אם אפשר"
+                  multiline
+                />
+
+                <View style={styles.fieldGroup}>
+                  <Text style={styles.fieldLabel}>חובה למילוי</Text>
+                  <View style={styles.accountStatusRow}>
+                    <TouchableOpacity
+                      style={[
+                        styles.accountStatusBtn,
+                        question.required && styles.accountStatusBtnActive,
+                      ]}
+                      onPress={() => updateCheckInQuestionField(question.id, 'required', true)}
+                    >
+                      <Ionicons
+                        name="checkmark-circle-outline"
+                        size={18}
+                        color={question.required ? COLORS.success : COLORS.textMuted}
+                      />
+                      <Text
+                        style={[
+                          styles.accountStatusBtnText,
+                          question.required && styles.accountStatusBtnTextActive,
+                        ]}
+                      >
+                        חובה
+                      </Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[
+                        styles.accountStatusBtn,
+                        !question.required && styles.accountStatusBtnInactive,
+                      ]}
+                      onPress={() => updateCheckInQuestionField(question.id, 'required', false)}
+                    >
+                      <Ionicons
+                        name="remove-circle-outline"
+                        size={18}
+                        color={!question.required ? COLORS.warning : COLORS.textMuted}
+                      />
+                      <Text
+                        style={[
+                          styles.accountStatusBtnText,
+                          !question.required && styles.accountStatusBtnTextInactive,
+                        ]}
+                      >
+                        אופציונלי
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              </View>
+            ))
+          )}
+        </SectionCard>
+
+        <SectionCard
+          title="הצ׳ק-אין האחרון שהוגש"
+          subtitle="תצוגה מהירה של הטופס האחרון שהלקוחה שלחה"
+          icon="document-text-outline"
+        >
+          {!latestCheckInEntry ? (
+            <Text style={styles.emptyStateText}>עדיין לא נשלח צ׳ק-אין מצד הלקוחה.</Text>
+          ) : (
+            <>
+              <View style={styles.summaryChipsRow}>
+                <SummaryChip label="שבוע" value={latestCheckInEntry.weekKey} color={COLORS.primary} />
+                <SummaryChip
+                  label="תשובות"
+                  value={latestCheckInEntry.answers?.length || 0}
+                  color={COLORS.info}
+                />
+                <SummaryChip
+                  label="נשלח"
+                  value={String(latestCheckInEntry.submittedAt || '').slice(0, 10) || '—'}
+                  color={COLORS.accent}
+                />
+              </View>
+
+              {(latestCheckInEntry.answers || []).map(answer => (
+                <View key={answer.questionId} style={styles.readonlyAnswerRow}>
+                  <Text style={styles.readonlyAnswerValue}>{formatCheckInAnswerValue(answer)}</Text>
+                  <Text style={styles.readonlyAnswerLabel}>{answer.label}</Text>
+                </View>
+              ))}
+
+              {latestCheckInEntry.note ? (
+                <View style={styles.readonlyAnswerNoteBox}>
+                  <Text style={styles.readonlyAnswerNote}>{latestCheckInEntry.note}</Text>
+                </View>
+              ) : null}
+            </>
+          )}
+        </SectionCard>
+      </>
+    );
+  };
+
   const getSaveLabel = () => {
     if (activeTab === 'account') return 'שמרי חשבון';
     if (activeTab === 'goals') return 'שמרי יעדים';
     if (activeTab === 'nutrition') return 'שמרי תזונה';
+    if (activeTab === 'habits') return 'שמרי הרגלים';
+    if (activeTab === 'checkin') return 'שמרי צ׳ק-אין';
     return 'שמרי תוכנית';
   };
 
@@ -2092,6 +2694,8 @@ export default function CoachClientPlansModal({ visible, clientId, onClose, onSa
                 {activeTab === 'goals' ? renderGoalsTab() : null}
                 {activeTab === 'nutrition' ? renderNutritionTab() : null}
                 {activeTab === 'workout' ? renderWorkoutTab() : null}
+                {activeTab === 'habits' ? renderHabitsTab() : null}
+                {activeTab === 'checkin' ? renderCheckInTab() : null}
               </ScrollView>
 
               <View style={styles.footerActions}>
@@ -2252,6 +2856,13 @@ const styles = StyleSheet.create({
     marginBottom: 5,
     textAlign: 'right',
   },
+  helperText: {
+    color: COLORS.textMuted,
+    fontSize: 11,
+    marginTop: -4,
+    marginBottom: 8,
+    textAlign: 'right',
+  },
   flexField: {
     flex: 1,
   },
@@ -2329,6 +2940,36 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '700',
   },
+  choiceChipsRow: {
+    flexDirection: 'row-reverse',
+    gap: 8,
+  },
+  choiceChipsWrap: {
+    flexDirection: 'row-reverse',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: 12,
+  },
+  choiceChip: {
+    backgroundColor: COLORS.card,
+    borderColor: COLORS.border,
+    borderRadius: 999,
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  choiceChipActive: {
+    backgroundColor: `${COLORS.primary}22`,
+    borderColor: COLORS.primary,
+  },
+  choiceChipText: {
+    color: COLORS.textMuted,
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  choiceChipTextActive: {
+    color: COLORS.primary,
+  },
   innerSectionHeader: {
     alignItems: 'center',
     flexDirection: 'row',
@@ -2375,6 +3016,40 @@ const styles = StyleSheet.create({
   loadingText: {
     color: COLORS.textSecondary,
     fontSize: 14,
+  },
+  readonlyAnswerLabel: {
+    color: COLORS.white,
+    flex: 1,
+    fontSize: 13,
+    fontWeight: '600',
+    textAlign: 'right',
+  },
+  readonlyAnswerNote: {
+    color: COLORS.textSecondary,
+    fontSize: 13,
+    lineHeight: 20,
+    textAlign: 'right',
+  },
+  readonlyAnswerNoteBox: {
+    backgroundColor: COLORS.inputBg,
+    borderColor: COLORS.border,
+    borderRadius: 12,
+    borderWidth: 1,
+    marginTop: 10,
+    padding: 12,
+  },
+  readonlyAnswerRow: {
+    alignItems: 'center',
+    borderTopColor: COLORS.border,
+    borderTopWidth: 1,
+    flexDirection: 'row',
+    gap: 12,
+    paddingVertical: 10,
+  },
+  readonlyAnswerValue: {
+    color: COLORS.primary,
+    fontSize: 12,
+    fontWeight: '700',
   },
   modalHandle: {
     alignSelf: 'center',

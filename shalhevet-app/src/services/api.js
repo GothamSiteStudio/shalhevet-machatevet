@@ -86,6 +86,13 @@ export const usersAPI = {
   },
   saveFoodDiary: (date, data) => apiRequest('PUT', `/users/food-diary/${date}`, data),
   getWorkoutPlan: () => apiRequest('GET', '/users/workout-plan'),
+  getHabits: date =>
+    apiRequest('GET', `/users/habits${date ? `?date=${encodeURIComponent(date)}` : ''}`),
+  updateHabit: (habitId, date, completed) =>
+    apiRequest('PUT', `/users/habits/${habitId}`, { date, completed }),
+  getCheckIn: weekKey =>
+    apiRequest('GET', `/users/check-in${weekKey ? `?weekKey=${encodeURIComponent(weekKey)}` : ''}`),
+  submitCheckIn: (weekKey, data) => apiRequest('PUT', `/users/check-in/${weekKey}`, data),
 
   // עדכון פרטים
   updateMe: data => apiRequest('PUT', '/users/me', data),

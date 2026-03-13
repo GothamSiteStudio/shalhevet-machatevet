@@ -58,6 +58,10 @@ function ClientCard({ client, onPress }) {
     client.isActive ? 'לקוחה פעילה' : 'לקוחה לא פעילה',
     client.requiresAttention ? 'דורשת טיפול' : null,
     client.goal ? `מטרה ${client.goal}` : null,
+    client.coachStatus ? `סטטוס ליווי ${client.coachStatus}` : null,
+    Array.isArray(client.coachTags) && client.coachTags.length
+      ? `תגיות ${client.coachTags.join(', ')}`
+      : null,
     client.weight ? `משקל ${client.weight} קילוגרם` : null,
     client.pendingMeetingsCount ? `${client.pendingMeetingsCount} פגישות ממתינות` : null,
     client.unreadUpdatesCount ? `${client.unreadUpdatesCount} עדכונים חדשים` : null,
@@ -81,6 +85,22 @@ function ClientCard({ client, onPress }) {
           <Text style={styles.clientName}>{client.name}</Text>
           <Text style={styles.clientEmail}>{client.email}</Text>
           {client.goal && <Text style={styles.clientGoal}>🎯 {client.goal}</Text>}
+          {client.coachStatus ? (
+            <View style={[styles.clientBadge, styles.clientCoachStatusBadge]}>
+              <Text style={[styles.clientBadgeText, styles.clientCoachStatusText]}>
+                {client.coachStatus}
+              </Text>
+            </View>
+          ) : null}
+          {Array.isArray(client.coachTags) && client.coachTags.length ? (
+            <View style={styles.clientTagsRow}>
+              {client.coachTags.slice(0, 3).map(tag => (
+                <View key={tag} style={[styles.clientBadge, styles.clientTagBadge]}>
+                  <Text style={[styles.clientBadgeText, styles.clientTagBadgeText]}>{tag}</Text>
+                </View>
+              ))}
+            </View>
+          ) : null}
           <Text style={styles.clientActionHint}>לחצי לעריכת חשבון, יעדים, תזונה ויומן אכילה</Text>
           {(client.pendingMeetingsCount || client.unreadUpdatesCount || client.isNewClient) ? (
             <View style={styles.clientBadgesRow}>
@@ -651,6 +671,8 @@ export default function CoachDashboardScreen() {
   const [showClientPlansModal, setShowClientPlansModal] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [clientFilter, setClientFilter] = useState('all');
+  const [coachStatusFilter, setCoachStatusFilter] = useState('all');
+  const [coachTagFilter, setCoachTagFilter] = useState('all');
 
   // מאגר ארוחות
   const [coachMeals, setCoachMeals] = useState([]);
@@ -803,6 +825,44 @@ export default function CoachDashboardScreen() {
     }));
   }, [prioritizedClients]);
 
+  const coachStatusOptions = useMemo(() => {
+    const counts = prioritizedClients.reduce((accumulator, client) => {
+      const status = String(client.coachStatus || '').trim();
+      if (!status) return accumulator;
+
+      accumulator[status] = (accumulator[status] || 0) + 1;
+      return accumulator;
+    }, {});
+
+    return [
+      { id: 'all', label: 'כל הסטטוסים', count: prioritizedClients.length },
+      ...Object.keys(counts)
+        .sort((left, right) => normalizeSearchText(left).localeCompare(normalizeSearchText(right), 'he'))
+        .map(status => ({ id: status, label: status, count: counts[status] })),
+    ];
+  }, [prioritizedClients]);
+
+  const coachTagOptions = useMemo(() => {
+    const counts = prioritizedClients.reduce((accumulator, client) => {
+      const tags = Array.isArray(client.coachTags) ? client.coachTags : [];
+
+      tags.forEach(tag => {
+        const normalizedTag = String(tag || '').trim();
+        if (!normalizedTag) return;
+        accumulator[normalizedTag] = (accumulator[normalizedTag] || 0) + 1;
+      });
+
+      return accumulator;
+    }, {});
+
+    return [
+      { id: 'all', label: 'כל התגיות', count: prioritizedClients.length },
+      ...Object.keys(counts)
+        .sort((left, right) => normalizeSearchText(left).localeCompare(normalizeSearchText(right), 'he'))
+        .map(tag => ({ id: tag, label: tag, count: counts[tag] })),
+    ];
+  }, [prioritizedClients]);
+
   const attentionSummary = useMemo(
     () => ({
       clients: prioritizedClients.filter(client => client.requiresAttention).length,
@@ -827,7 +887,14 @@ export default function CoachDashboardScreen() {
   const visibleClients = prioritizedClients.filter(client => {
     const matchesSearch =
       !normalizedClientSearchQuery ||
-      [client.name, client.email, client.goal, client.phone]
+      [
+        client.name,
+        client.email,
+        client.goal,
+        client.phone,
+        client.coachStatus,
+        ...(Array.isArray(client.coachTags) ? client.coachTags : []),
+      ]
         .filter(Boolean)
         .some(value => normalizeSearchText(value).includes(normalizedClientSearchQuery));
 
@@ -838,7 +905,14 @@ export default function CoachDashboardScreen() {
       (clientFilter === 'inactive' && !client.isActive) ||
       (clientFilter === 'new' && client.isNewClient);
 
-    return matchesSearch && matchesFilter;
+    const matchesCoachStatus =
+      coachStatusFilter === 'all' || String(client.coachStatus || '').trim() === coachStatusFilter;
+
+    const matchesCoachTag =
+      coachTagFilter === 'all' ||
+      (Array.isArray(client.coachTags) && client.coachTags.includes(coachTagFilter));
+
+    return matchesSearch && matchesFilter && matchesCoachStatus && matchesCoachTag;
   });
 
   const openClientModal = clientId => {
@@ -1048,6 +1122,72 @@ export default function CoachDashboardScreen() {
                   ))}
                 </View>
               </ScrollView>
+
+              {coachStatusOptions.length > 1 ? (
+                <>
+                  <Text style={styles.secondaryFilterLabel}>סינון לפי סטטוס ליווי</Text>
+                  <ScrollView
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    style={styles.clientFiltersScroll}
+                  >
+                    <View style={styles.clientFiltersRow}>
+                      {coachStatusOptions.map(option => (
+                        <TouchableOpacity
+                          key={option.id}
+                          style={[
+                            styles.clientFilterChip,
+                            coachStatusFilter === option.id && styles.clientFilterChipActive,
+                          ]}
+                          onPress={() => setCoachStatusFilter(option.id)}
+                        >
+                          <Text
+                            style={[
+                              styles.clientFilterChipText,
+                              coachStatusFilter === option.id && styles.clientFilterChipTextActive,
+                            ]}
+                          >
+                            {option.label} ({option.count})
+                          </Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  </ScrollView>
+                </>
+              ) : null}
+
+              {coachTagOptions.length > 1 ? (
+                <>
+                  <Text style={styles.secondaryFilterLabel}>סינון לפי תגיות</Text>
+                  <ScrollView
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    style={styles.clientFiltersScroll}
+                  >
+                    <View style={styles.clientFiltersRow}>
+                      {coachTagOptions.map(option => (
+                        <TouchableOpacity
+                          key={option.id}
+                          style={[
+                            styles.clientFilterChip,
+                            coachTagFilter === option.id && styles.clientFilterChipActive,
+                          ]}
+                          onPress={() => setCoachTagFilter(option.id)}
+                        >
+                          <Text
+                            style={[
+                              styles.clientFilterChipText,
+                              coachTagFilter === option.id && styles.clientFilterChipTextActive,
+                            ]}
+                          >
+                            {option.label} ({option.count})
+                          </Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  </ScrollView>
+                </>
+              ) : null}
 
               <Text style={styles.clientSortHint}>
                 לקוחות עם פגישות ממתינות ועדכונים חדשים מוצגות ראשונות.
@@ -1436,12 +1576,27 @@ const styles = StyleSheet.create({
   },
   clientBadgeNew: { backgroundColor: '#2E7D3233' },
   clientBadgeNewText: { color: COLORS.success },
+  clientCoachStatusBadge: {
+    alignSelf: 'flex-end',
+    backgroundColor: `${COLORS.accent}22`,
+    marginTop: 6,
+  },
+  clientCoachStatusText: { color: COLORS.accent },
   clientBadgePending: { backgroundColor: '#E6510033' },
   clientBadgePendingText: { color: '#FFA726' },
   clientBadgeText: { fontSize: 10, fontWeight: '700' },
+  clientTagBadge: { backgroundColor: `${COLORS.info}22` },
+  clientTagBadgeText: { color: COLORS.info },
   clientBadgeUnread: { backgroundColor: '#1565C033' },
   clientBadgeUnreadText: { color: COLORS.info },
   clientBadgesRow: {
+    flexDirection: 'row-reverse',
+    flexWrap: 'wrap',
+    gap: 6,
+    marginTop: 8,
+  },
+  clientTagsRow: {
+    alignSelf: 'flex-end',
     flexDirection: 'row-reverse',
     flexWrap: 'wrap',
     gap: 6,
@@ -1501,6 +1656,12 @@ const styles = StyleSheet.create({
     color: COLORS.textSecondary,
     fontSize: 12,
     marginBottom: 10,
+    textAlign: 'right',
+  },
+  secondaryFilterLabel: {
+    color: COLORS.textSecondary,
+    fontSize: 12,
+    marginBottom: 6,
     textAlign: 'right',
   },
   formMessage: {

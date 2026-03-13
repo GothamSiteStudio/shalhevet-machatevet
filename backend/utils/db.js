@@ -46,6 +46,131 @@ function toBoolean(value, defaultValue = false) {
   return Boolean(value);
 }
 
+const HABIT_FREQUENCIES = new Set(["daily", "weekly"]);
+const CHECK_IN_QUESTION_TYPES = new Set([
+  "shortText",
+  "longText",
+  "number",
+  "yesNo",
+  "scale",
+]);
+
+function normalizeTextList(value) {
+  const items = Array.isArray(value)
+    ? value
+    : typeof value === "string"
+      ? value.split(",")
+      : [];
+
+  return [...new Set(
+    items
+      .map((item) => String(item || "").trim())
+      .filter(Boolean),
+  )];
+}
+
+function normalizeHabitAssignments(value) {
+  if (!Array.isArray(value)) return [];
+
+  return value
+    .map((habit, index) => {
+      const title = String(habit?.title || "").trim();
+
+      return {
+        id: habit?.id || `habit-${index + 1}`,
+        title: title || `הרגל ${index + 1}`,
+        frequency: HABIT_FREQUENCIES.has(habit?.frequency)
+          ? habit.frequency
+          : "daily",
+        targetCount: Math.max(1, toIntegerOrNull(habit?.targetCount) || 1),
+        notes: String(habit?.notes || "").trim(),
+        isActive: toBoolean(habit?.isActive, true),
+      };
+    })
+    .filter((habit) => habit.title);
+}
+
+function normalizeCheckInTemplate(value) {
+  const source =
+    value && typeof value === "object" && !Array.isArray(value) ? value : {};
+
+  return {
+    title: String(source.title || "").trim(),
+    intro: String(source.intro || "").trim(),
+    questions: Array.isArray(source.questions)
+      ? source.questions
+          .map((question, index) => {
+            const label = String(question?.label || "").trim();
+            const type = CHECK_IN_QUESTION_TYPES.has(question?.type)
+              ? question.type
+              : "shortText";
+
+            return {
+              id: question?.id || `check-in-question-${index + 1}`,
+              label: label || `שאלה ${index + 1}`,
+              type,
+              placeholder: String(question?.placeholder || "").trim(),
+              helperText: String(question?.helperText || "").trim(),
+              required: toBoolean(question?.required, true),
+            };
+          })
+          .filter((question) => question.label)
+      : [],
+  };
+}
+
+function normalizeCheckInAnswerValue(type, value) {
+  if (value === undefined || value === null || value === "") {
+    return null;
+  }
+
+  if (type === "number" || type === "scale") {
+    return toNumberOrNull(value);
+  }
+
+  if (type === "yesNo") {
+    if (typeof value === "boolean") return value;
+
+    const normalized = String(value).trim().toLowerCase();
+    if (normalized === "true") return true;
+    if (normalized === "false") return false;
+    return null;
+  }
+
+  const text = String(value || "").trim();
+  return text || null;
+}
+
+function normalizeCheckInAnswers(value, template) {
+  const normalizedTemplate = normalizeCheckInTemplate(template);
+  const answersByQuestionId = new Map(
+    Array.isArray(value)
+      ? value.map((answer) => [String(answer?.questionId || "").trim(), answer])
+      : [],
+  );
+
+  return normalizedTemplate.questions
+    .map((question) => {
+      const rawAnswer = answersByQuestionId.get(question.id);
+      const normalizedValue = normalizeCheckInAnswerValue(
+        question.type,
+        rawAnswer?.value,
+      );
+
+      if (normalizedValue === null) {
+        return null;
+      }
+
+      return {
+        questionId: question.id,
+        label: question.label,
+        type: question.type,
+        value: normalizedValue,
+      };
+    })
+    .filter(Boolean);
+}
+
 function mapUser(row) {
   if (!row) return null;
 
@@ -63,6 +188,10 @@ function mapUser(row) {
     activityLevel: row.activity_level || null,
     coachName: row.coach_name || null,
     coachPhone: row.coach_phone || null,
+    coachStatus: row.coach_status || "",
+    coachTags: normalizeTextList(row.coach_tags || []),
+    habitAssignments: normalizeHabitAssignments(row.habit_assignments || []),
+    checkInTemplate: normalizeCheckInTemplate(row.check_in_template || {}),
     isActive: toBoolean(row.is_active, true),
     notes: row.notes || "",
     code: row.code || null,
@@ -175,6 +304,38 @@ function mapMessage(row) {
     fromRole: row.from_role || null,
     read: toBoolean(row.is_read, false),
     createdAt: toIsoString(row.created_at),
+  };
+}
+
+function mapCheckInEntry(row) {
+  if (!row) return null;
+
+  const template = normalizeCheckInTemplate(row.template || {});
+
+  return {
+    id: row.id,
+    userId: row.user_id,
+    weekKey: row.week_key,
+    template,
+    answers: normalizeCheckInAnswers(row.answers || [], template),
+    note: row.note || "",
+    submittedAt: toIsoString(row.submitted_at),
+    createdAt: toIsoString(row.created_at),
+    updatedAt: toIsoString(row.updated_at),
+  };
+}
+
+function mapHabitLog(row) {
+  if (!row) return null;
+
+  return {
+    id: row.id,
+    userId: row.user_id,
+    habitId: row.habit_id,
+    date: toDateOnly(row.log_date),
+    completed: toBoolean(row.completed, false),
+    createdAt: toIsoString(row.created_at),
+    updatedAt: toIsoString(row.updated_at),
   };
 }
 
@@ -402,14 +563,16 @@ async function createUser(userData) {
       INSERT INTO users (
         id, name, email, phone, password, role,
         weight, height, age, goal, activity_level,
-        coach_name, coach_phone, is_active, notes, code,
-        created_at, updated_at
+        coach_name, coach_phone, coach_status, coach_tags,
+        habit_assignments, check_in_template,
+        is_active, notes, code, created_at, updated_at
       )
       VALUES (
         $1, $2, $3, $4, $5, $6,
         $7, $8, $9, $10, $11,
-        $12, $13, $14, $15, $16,
-        $17, $18
+        $12, $13, $14, $15::jsonb,
+        $16::jsonb, $17::jsonb,
+        $18, $19, $20, $21, $22
       )
       RETURNING *
     `,
@@ -429,6 +592,10 @@ async function createUser(userData) {
       userData.activityLevel || null,
       userData.coachName || null,
       userData.coachPhone || null,
+      userData.coachStatus || "",
+      JSON.stringify(normalizeTextList(userData.coachTags || [])),
+      JSON.stringify(normalizeHabitAssignments(userData.habitAssignments || [])),
+      JSON.stringify(normalizeCheckInTemplate(userData.checkInTemplate || {})),
       toBoolean(userData.isActive, true),
       userData.notes || "",
       userData.code || null,
@@ -460,6 +627,22 @@ async function updateUser(id, updates) {
     activityLevel: { column: "activity_level" },
     coachName: { column: "coach_name" },
     coachPhone: { column: "coach_phone" },
+    coachStatus: { column: "coach_status" },
+    coachTags: {
+      column: "coach_tags",
+      cast: "jsonb",
+      transform: (value) => JSON.stringify(normalizeTextList(value)),
+    },
+    habitAssignments: {
+      column: "habit_assignments",
+      cast: "jsonb",
+      transform: (value) => JSON.stringify(normalizeHabitAssignments(value)),
+    },
+    checkInTemplate: {
+      column: "check_in_template",
+      cast: "jsonb",
+      transform: (value) => JSON.stringify(normalizeCheckInTemplate(value)),
+    },
     isActive: {
       column: "is_active",
       transform: (value) => toBoolean(value, true),
@@ -479,7 +662,9 @@ async function updateUser(id, updates) {
       ? descriptor.transform(rawValue)
       : rawValue;
     values.push(value);
-    setClauses.push(`${descriptor.column} = $${values.length}`);
+    setClauses.push(
+      `${descriptor.column} = $${values.length}${descriptor.cast === "jsonb" ? "::jsonb" : ""}`,
+    );
   });
 
   if (setClauses.length === 0) {
@@ -922,6 +1107,143 @@ async function saveFoodDiaryEntry(userId, date, entryData) {
   return mapFoodDiaryEntry(result.rows[0]);
 }
 
+function mergeHabitAssignmentsWithLogs(habitAssignments, logs) {
+  const logsByHabitId = new Map(
+    (logs || []).map((log) => [String(log.habitId || "").trim(), log]),
+  );
+
+  return normalizeHabitAssignments(habitAssignments).map((habit) => {
+    const log = logsByHabitId.get(habit.id);
+
+    return {
+      ...habit,
+      completed: log?.completed || false,
+      completedAt: log?.updatedAt || null,
+      logId: log?.id || null,
+    };
+  });
+}
+
+async function getCheckInEntry(userId, weekKey) {
+  const result = await query(
+    "SELECT * FROM check_in_entries WHERE user_id = $1 AND week_key = $2 LIMIT 1",
+    [userId, weekKey],
+  );
+
+  return mapCheckInEntry(result.rows[0]);
+}
+
+async function getLatestCheckInEntry(userId) {
+  const result = await query(
+    `
+      SELECT *
+      FROM check_in_entries
+      WHERE user_id = $1
+      ORDER BY submitted_at DESC, updated_at DESC
+      LIMIT 1
+    `,
+    [userId],
+  );
+
+  return mapCheckInEntry(result.rows[0]);
+}
+
+async function upsertCheckInEntry(userId, weekKey, entryData = {}) {
+  const existing = await getCheckInEntry(userId, weekKey);
+  const now = new Date().toISOString();
+  const template = normalizeCheckInTemplate(entryData.template || {});
+  const answers = normalizeCheckInAnswers(entryData.answers || [], template);
+
+  const result = await query(
+    `
+      INSERT INTO check_in_entries (
+        id, user_id, week_key, template, answers, note,
+        submitted_at, created_at, updated_at
+      )
+      VALUES ($1, $2, $3, $4::jsonb, $5::jsonb, $6, $7, $8, $9)
+      ON CONFLICT (user_id, week_key) DO UPDATE SET
+        template = EXCLUDED.template,
+        answers = EXCLUDED.answers,
+        note = EXCLUDED.note,
+        submitted_at = EXCLUDED.submitted_at,
+        updated_at = EXCLUDED.updated_at
+      RETURNING *
+    `,
+    [
+      existing?.id || createRecordId("check-in"),
+      userId,
+      weekKey,
+      JSON.stringify(template),
+      JSON.stringify(answers),
+      String(entryData.note || "").trim(),
+      now,
+      existing?.createdAt ? toIsoString(existing.createdAt) : now,
+      now,
+    ],
+  );
+
+  return mapCheckInEntry(result.rows[0]);
+}
+
+async function getHabitLogsForDate(userId, logDate) {
+  const normalizedDate = toDateOnly(logDate);
+  const result = await query(
+    `
+      SELECT *
+      FROM habit_logs
+      WHERE user_id = $1 AND log_date = $2
+      ORDER BY created_at DESC
+    `,
+    [userId, normalizedDate],
+  );
+
+  return result.rows.map(mapHabitLog);
+}
+
+async function getHabitAssignmentsWithLogs(userId, logDate) {
+  const normalizedDate = toDateOnly(logDate);
+  const [user, logs] = await Promise.all([
+    getUserById(userId),
+    getHabitLogsForDate(userId, normalizedDate),
+  ]);
+
+  return {
+    date: normalizedDate,
+    habits: mergeHabitAssignmentsWithLogs(user?.habitAssignments || [], logs),
+  };
+}
+
+async function saveHabitLog(userId, habitId, logDate, completed) {
+  const normalizedDate = toDateOnly(logDate);
+  const existingLogs = await getHabitLogsForDate(userId, normalizedDate);
+  const existing = existingLogs.find((log) => log.habitId === habitId);
+  const now = new Date().toISOString();
+
+  const result = await query(
+    `
+      INSERT INTO habit_logs (
+        id, user_id, habit_id, log_date, completed, created_at, updated_at
+      )
+      VALUES ($1, $2, $3, $4, $5, $6, $7)
+      ON CONFLICT (user_id, habit_id, log_date) DO UPDATE SET
+        completed = EXCLUDED.completed,
+        updated_at = EXCLUDED.updated_at
+      RETURNING *
+    `,
+    [
+      existing?.id || createRecordId("habit-log"),
+      userId,
+      habitId,
+      normalizedDate,
+      toBoolean(completed, false),
+      existing?.createdAt ? toIsoString(existing.createdAt) : now,
+      now,
+    ],
+  );
+
+  return mapHabitLog(result.rows[0]);
+}
+
 // ─── Coach Meals (מאגר ארוחות של המאמנת) ────────────────────────────────────
 
 function mapCoachMeal(row) {
@@ -1093,6 +1415,12 @@ module.exports = {
   getFoodDiaryEntry,
   listFoodDiaryEntries,
   saveFoodDiaryEntry,
+  getCheckInEntry,
+  getLatestCheckInEntry,
+  upsertCheckInEntry,
+  getHabitLogsForDate,
+  getHabitAssignmentsWithLogs,
+  saveHabitLog,
   getAllCoachMeals,
   getCoachMealById,
   createCoachMeal,

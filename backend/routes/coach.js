@@ -46,6 +46,7 @@ const {
   addMessage,
   listFoodDiaryEntries,
   saveFoodDiaryEntry,
+    getLatestCheckInEntry,
   getAllCoachMeals,
   getCoachMealById,
   createCoachMeal,
@@ -65,6 +66,14 @@ function asyncHandler(handler) {
 }
 
 const FOOD_DIARY_MEAL_TYPES = ["breakfast", "lunch", "dinner", "snacks"];
+const HABIT_FREQUENCIES = new Set(["daily", "weekly"]);
+const CHECK_IN_QUESTION_TYPES = new Set([
+  "shortText",
+  "longText",
+  "number",
+  "yesNo",
+  "scale",
+]);
 
 function isValidDateKey(value) {
   return /^\d{4}-\d{2}-\d{2}$/.test(String(value || "").trim());
@@ -192,6 +201,92 @@ function buildNutritionTargets(targets = {}) {
   });
 
   return payload;
+}
+
+function parseOptionalTags(value) {
+  if (value === undefined) return undefined;
+
+  const items = Array.isArray(value)
+    ? value
+    : typeof value === "string"
+      ? value.split(",")
+      : null;
+
+  if (!items) {
+    throw createBadRequest("השדה coachTags חייב להיות רשימה או טקסט מופרד בפסיקים");
+  }
+
+  return [...new Set(
+    items
+      .map((item) => String(item || "").trim())
+      .filter(Boolean),
+  )];
+}
+
+function buildHabitAssignmentsPayload(value) {
+  if (value === undefined) return undefined;
+
+  return ensureArray(value, "habitAssignments").map((habit, index) => {
+    const title = parseOptionalText(habit?.title) || "";
+    if (!title) {
+      throw createBadRequest(`חסר שם להרגל מספר ${index + 1}`);
+    }
+
+    const frequency = parseOptionalText(habit?.frequency) || "daily";
+    if (!HABIT_FREQUENCIES.has(frequency)) {
+      throw createBadRequest(`התדירות של הרגל ${index + 1} חייבת להיות daily או weekly`);
+    }
+
+    return {
+      id: parseOptionalText(habit?.id) || `habit-${index + 1}`,
+      title,
+      frequency,
+      targetCount: parseOptionalInteger(habit?.targetCount, `habitAssignments[${index}].targetCount`) || 1,
+      notes: parseOptionalText(habit?.notes) || "",
+      isActive: parseOptionalBoolean(habit?.isActive, `habitAssignments[${index}].isActive`) ?? true,
+    };
+  });
+}
+
+function buildCheckInTemplatePayload(value) {
+  if (value === undefined) return undefined;
+
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw createBadRequest("השדה checkInTemplate חייב להיות אובייקט");
+  }
+
+  const questions = ensureArray(value.questions || [], "checkInTemplate.questions").map(
+    (question, index) => {
+      const label = parseOptionalText(question?.label) || "";
+      if (!label) {
+        throw createBadRequest(`חסרה כותרת לשאלת צ׳ק-אין מספר ${index + 1}`);
+      }
+
+      const type = parseOptionalText(question?.type) || "shortText";
+      if (!CHECK_IN_QUESTION_TYPES.has(type)) {
+        throw createBadRequest(`סוג השאלה ${label} אינו נתמך`);
+      }
+
+      return {
+        id: parseOptionalText(question?.id) || `check-in-question-${index + 1}`,
+        label,
+        type,
+        placeholder: parseOptionalText(question?.placeholder) || "",
+        helperText: parseOptionalText(question?.helperText) || "",
+        required:
+          parseOptionalBoolean(
+            question?.required,
+            `checkInTemplate.questions[${index}].required`,
+          ) ?? true,
+      };
+    },
+  );
+
+  return {
+    title: parseOptionalText(value.title) || "",
+    intro: parseOptionalText(value.intro) || "",
+    questions,
+  };
 }
 
 function buildMealItems(items, mealIndex) {
@@ -454,6 +549,7 @@ router.get(
       foodDiaryEntries,
       nutritionPlan,
       workoutPlan,
+      latestCheckInEntry,
     ] = await Promise.all([
       getWeightHistory(user.id),
       getUpdates(user.id),
@@ -464,6 +560,7 @@ router.get(
       listFoodDiaryEntries(user.id, 7),
       getNutritionPlan(user.id),
       getWorkoutPlan(user.id),
+      getLatestCheckInEntry(user.id),
     ]);
 
     res.json({
@@ -478,6 +575,7 @@ router.get(
       foodDiaryEntries,
       nutritionPlan,
       workoutPlan,
+      latestCheckInEntry,
     });
   }),
 );
@@ -713,6 +811,10 @@ router.put("/clients/:id", async (req, res) => {
       goal,
       activityLevel,
       notes,
+      coachStatus,
+      coachTags,
+      habitAssignments,
+      checkInTemplate,
       isActive,
       newPassword,
     } = req.body;
@@ -758,6 +860,22 @@ router.put("/clients/:id", async (req, res) => {
 
     const normalizedNotes = parseOptionalText(notes);
     if (normalizedNotes !== undefined) updates.notes = normalizedNotes;
+
+    const normalizedCoachStatus = parseOptionalText(coachStatus);
+    if (normalizedCoachStatus !== undefined) updates.coachStatus = normalizedCoachStatus;
+
+    const normalizedCoachTags = parseOptionalTags(coachTags);
+    if (normalizedCoachTags !== undefined) updates.coachTags = normalizedCoachTags;
+
+    const normalizedHabitAssignments = buildHabitAssignmentsPayload(habitAssignments);
+    if (normalizedHabitAssignments !== undefined) {
+      updates.habitAssignments = normalizedHabitAssignments;
+    }
+
+    const normalizedCheckInTemplate = buildCheckInTemplatePayload(checkInTemplate);
+    if (normalizedCheckInTemplate !== undefined) {
+      updates.checkInTemplate = normalizedCheckInTemplate;
+    }
 
     const normalizedIsActive = parseOptionalBoolean(isActive, "isActive");
     if (normalizedIsActive !== undefined) updates.isActive = normalizedIsActive;
