@@ -15,10 +15,12 @@ import { useFocusEffect } from '@react-navigation/native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons, MaterialCommunityIcons, FontAwesome5 } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
+import * as Haptics from 'expo-haptics';
 import { COLORS } from '../theme/colors';
 import { usersAPI } from '../services/api';
 import useStore from '../store/useStore';
 import { getFoodDiaryDateKey, normalizeFoodDiaryEntry } from '../utils/foodDiary';
+import { Button, Skeleton, FadeInView } from '../components/ui';
 
 const { width } = Dimensions.get('window');
 const CARD_SIZE = (width - 48 - 16) / 2;
@@ -95,37 +97,39 @@ const MENU_ITEMS = [
   },
 ];
 
-function MenuCard({ item, onPress }) {
+function MenuCard({ item, onPress, index }) {
   const IconComponent =
     item.library === 'material' ? MaterialCommunityIcons :
     item.library === 'fa5' ? FontAwesome5 : Ionicons;
 
   return (
-    <TouchableOpacity
-      style={[styles.card, { width: CARD_SIZE, height: CARD_SIZE }]}
-      onPress={onPress}
-      activeOpacity={0.75}
-      accessible={true}
-      accessibilityLabel={item.label}
-      accessibilityHint={item.accessibilityHint}
-      accessibilityRole="button"
-    >
-      <LinearGradient
-        colors={['#1E1E1E', '#161616']}
-        style={styles.cardGradient}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
+    <FadeInView delay={index * 100} direction="up" distance={30}>
+      <TouchableOpacity
+        style={[styles.card, { width: CARD_SIZE, height: CARD_SIZE }]}
+        onPress={onPress}
+        activeOpacity={0.75}
+        accessible={true}
+        accessibilityLabel={item.label}
+        accessibilityHint={item.accessibilityHint}
+        accessibilityRole="button"
       >
-        <View
-          style={[styles.iconCircle, { borderColor: item.color + '44' }]}
-          accessible={false}
-          importantForAccessibility="no-hide-descendants"
+        <LinearGradient
+          colors={['#1E1E1E', '#161616']}
+          style={styles.cardGradient}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
         >
-          <IconComponent name={item.icon} size={32} color={item.color} accessible={false} />
-        </View>
-        <Text style={styles.cardLabel} accessible={false}>{item.label}</Text>
-      </LinearGradient>
-    </TouchableOpacity>
+          <View
+            style={[styles.iconCircle, { borderColor: item.color + '44' }]}
+            accessible={false}
+            importantForAccessibility="no-hide-descendants"
+          >
+            <IconComponent name={item.icon} size={32} color={item.color} accessible={false} />
+          </View>
+          <Text style={styles.cardLabel} accessible={false}>{item.label}</Text>
+        </LinearGradient>
+      </TouchableOpacity>
+    </FadeInView>
   );
 }
 
@@ -139,6 +143,7 @@ function WeightModal({ visible, onClose }) {
 
   const handleSave = () => {
     addWeight(selected);
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     onClose();
     // Announce to screen readers
     AccessibilityInfo.announceForAccessibility(`המשקל עודכן ל-${selected.toFixed(1)} קילוגרם`);
@@ -212,15 +217,14 @@ function WeightModal({ visible, onClose }) {
             ))}
           </ScrollView>
 
-          <TouchableOpacity
-            style={styles.saveBtn}
+          <Button
+            title="שמור"
             onPress={handleSave}
-            accessible={true}
+            variant="primary"
+            size="lg"
+            style={{ width: '100%', marginTop: 8 }}
             accessibilityLabel={`שמרי משקל ${selected.toFixed(1)} קילוגרם`}
-            accessibilityRole="button"
-          >
-            <Text style={styles.saveBtnText}>שמור</Text>
-          </TouchableOpacity>
+          />
         </View>
       </View>
     </Modal>
@@ -279,6 +283,7 @@ export default function HomeScreen({ navigation }) {
   );
 
   const handleItemPress = (item) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     if (item.id === 'weight') {
       setShowWeightModal(true);
     } else if (item.tab) {
@@ -360,7 +365,7 @@ export default function HomeScreen({ navigation }) {
               <Text style={styles.calorieTitle}>מאזן קלוריות להיום</Text>
               <Text style={styles.calorieSubtitle}>
                 {calorieSummary.loading
-                  ? 'טוען תפריט ויומן אכילה...'
+                  ? <Skeleton width={180} height={14} borderRadius={4} />
                   : calorieSummary.hasTarget
                     ? 'מחושב לפי מה שנרשם ביומן האכילה שלך'
                     : 'כדי לחשב יתרה צריך יעד קלורי מהמאמנת'}
@@ -373,31 +378,39 @@ export default function HomeScreen({ navigation }) {
 
           <View style={styles.calorieMetricsRow}>
             <View style={styles.calorieMetric}>
-              <Text style={styles.calorieMetricValue}>
-                {calorieSummary.loading
-                  ? '...'
-                  : calorieSummary.hasTarget
-                    ? calorieSummary.remainingCalories
-                    : '—'}
-              </Text>
+              <View style={{ height: 28, justifyContent: 'center' }}>
+                {calorieSummary.loading ? (
+                  <Skeleton width={40} height={20} borderRadius={6} />
+                ) : (
+                  <Text style={styles.calorieMetricValue}>
+                    {calorieSummary.hasTarget ? calorieSummary.remainingCalories : '—'}
+                  </Text>
+                )}
+              </View>
               <Text style={styles.calorieMetricLabel}>נשארו</Text>
             </View>
             <View style={styles.calorieMetricDivider} />
             <View style={styles.calorieMetric}>
-              <Text style={styles.calorieMetricValue}>
-                {calorieSummary.loading ? '...' : calorieSummary.consumedCalories}
-              </Text>
+              <View style={{ height: 28, justifyContent: 'center' }}>
+                {calorieSummary.loading ? (
+                  <Skeleton width={40} height={20} borderRadius={6} />
+                ) : (
+                  <Text style={styles.calorieMetricValue}>{calorieSummary.consumedCalories}</Text>
+                )}
+              </View>
               <Text style={styles.calorieMetricLabel}>נאכל</Text>
             </View>
             <View style={styles.calorieMetricDivider} />
             <View style={styles.calorieMetric}>
-              <Text style={styles.calorieMetricValue}>
-                {calorieSummary.loading
-                  ? '...'
-                  : calorieSummary.hasTarget
-                    ? calorieSummary.targetCalories
-                    : '—'}
-              </Text>
+              <View style={{ height: 28, justifyContent: 'center' }}>
+                {calorieSummary.loading ? (
+                  <Skeleton width={40} height={20} borderRadius={6} />
+                ) : (
+                  <Text style={styles.calorieMetricValue}>
+                    {calorieSummary.hasTarget ? calorieSummary.targetCalories : '—'}
+                  </Text>
+                )}
+              </View>
               <Text style={styles.calorieMetricLabel}>יעד</Text>
             </View>
           </View>
@@ -413,10 +426,11 @@ export default function HomeScreen({ navigation }) {
           accessible={false}
           importantForAccessibility="no"
         >
-          {MENU_ITEMS.map((item) => (
+          {MENU_ITEMS.map((item, index) => (
             <MenuCard
               key={item.id}
               item={item}
+              index={index}
               onPress={() => handleItemPress(item)}
             />
           ))}

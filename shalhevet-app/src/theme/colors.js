@@ -1,30 +1,36 @@
 export const COLORS = {
-  // Backgrounds
+  // Layout
   background: '#111111',
   card: '#1C1C1C',
   cardLight: '#242424',
-  tabBar: '#161616',
+  tabBar: '#151515',
   inputBg: '#2A2A2A',
-
+  
   // Brand
-  primary: '#D32F2F',
+  primary: '#E53935',
   primaryLight: '#EF5350',
   primaryDark: '#B71C1C',
-  accent: '#F08000',
+  accent: '#FF7043',
+  
+  // Gradients for linear-gradient backgrounds
+  gradientPrimary: ['#E53935', '#FF7043'], // 🔥 אש/שלהבת
+  gradientDark: ['#242424', '#161616'],
+  gradientBackground: ['#1C1C1C', '#111111'],
+  gradientSuccess: ['#43A047', '#66BB6A'],
 
   // Text
   white: '#FFFFFF',
-  text: '#FFFFFF',
+  text: '#F5F5F5',
   textSecondary: '#AAAAAA',
-  textMuted: '#666666',
+  textMuted: '#757575',
 
-  // UI
+  // UI & Status
   border: '#2E2E2E',
   borderLight: '#3A3A3A',
   success: '#4CAF50',
   warning: '#FFC107',
   info: '#42A5F5',
-  danger: '#FF5252',
+  danger: '#EF5350',
 
   // Grays
   gray100: '#F5F5F5',
