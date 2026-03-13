@@ -12,7 +12,9 @@
       "resizeMode": "contain",
       "backgroundColor": "#111111"
     },
-    "assetBundlePatterns": ["**/*"],
+    "assetBundlePatterns": [
+      "**/*"
+    ],
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.shalhevet.mehatevet"
@@ -30,7 +32,8 @@
         {
           "photosPermission": "האפליקציה צריכה גישה לגלריה לצילום ארוחות"
         }
-      ]
+      ],
+      "expo-font"
     ]
   }
 }

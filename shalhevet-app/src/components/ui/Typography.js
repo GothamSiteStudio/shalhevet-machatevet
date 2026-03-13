@@ -1,6 +1,6 @@
 import React from 'react';
 import { Text as RNText } from 'react-native';
-import { theme } from '../../theme';
+import { getFontFamilyForWeight, theme } from '../../theme';
 
 export const Typography = ({ 
   children, 
@@ -21,7 +21,6 @@ export const Typography = ({
         return {
           fontSize: theme.typography.sizes.xxl,
           lineHeight: theme.typography.lineHeights.xxl,
-          fontWeight: 'bold',
           color: theme.colors.white,
           fontFamily: theme.typography.fontFamily.bold,
         };
@@ -29,7 +28,6 @@ export const Typography = ({
         return {
           fontSize: theme.typography.sizes.xl,
           lineHeight: theme.typography.lineHeights.xl,
-          fontWeight: 'bold',
           color: theme.colors.white,
           fontFamily: theme.typography.fontFamily.bold,
         };
@@ -37,7 +35,6 @@ export const Typography = ({
         return {
           fontSize: theme.typography.sizes.lg,
           lineHeight: theme.typography.lineHeights.lg,
-          fontWeight: '600',
           color: theme.colors.white,
           fontFamily: theme.typography.fontFamily.medium,
         };
@@ -78,7 +75,7 @@ export const Typography = ({
         getStyle(),
         { textAlign: align },
         color && { color },
-        weight && { fontWeight: weight },
+        weight && { fontFamily: getFontFamilyForWeight(weight) },
         style
       ]}
       {...props}

@@ -1,8 +1,8 @@
 import React from 'react';
-import { TouchableOpacity, Text, StyleSheet, View } from 'react-native';
+import { TouchableOpacity, Text } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
-import { theme } from '../../theme';
+import { getFontFamilyForWeight, theme } from '../../theme';
 
 export const Button = ({ 
   title, 
@@ -58,9 +58,8 @@ export const Button = ({
 
     return {
       fontSize,
-      fontWeight: '600',
       color,
-      fontFamily: theme.typography.fontFamily.medium,
+      fontFamily: getFontFamilyForWeight('600'),
       marginStart: icon ? theme.spacing.sm : 0,
     };
   };
