@@ -62,11 +62,19 @@ function normalizeTextList(value) {
       ? value.split(",")
       : [];
 
-  return [...new Set(
-    items
-      .map((item) => String(item || "").trim())
-      .filter(Boolean),
-  )];
+  return [
+    ...new Set(items.map((item) => String(item || "").trim()).filter(Boolean)),
+  ];
+}
+
+function normalizeClientTypeLabel(value) {
+  return String(value || "")
+    .trim()
+    .replace(/\s+/g, " ");
+}
+
+function normalizeClientTypeKey(value) {
+  return normalizeClientTypeLabel(value).toLowerCase();
 }
 
 function normalizeQuickMessageTemplates(value) {
@@ -192,6 +200,181 @@ function normalizeCheckInAnswers(value, template) {
     .filter(Boolean);
 }
 
+function normalizeNutritionTargets(value) {
+  const source =
+    value && typeof value === "object" && !Array.isArray(value) ? value : {};
+
+  return {
+    calories: toNumberOrNull(source.calories),
+    protein: toNumberOrNull(source.protein),
+    carbs: toNumberOrNull(source.carbs),
+    fat: toNumberOrNull(source.fat),
+    waterLiters: toNumberOrNull(source.waterLiters),
+  };
+}
+
+function normalizeNutritionMeals(value) {
+  if (!Array.isArray(value)) return [];
+
+  return value.map((meal, mealIndex) => ({
+    id: meal?.id || `meal-${mealIndex + 1}`,
+    name: String(meal?.name || "").trim() || `ארוחה ${mealIndex + 1}`,
+    time: String(meal?.time || "").trim(),
+    notes: String(meal?.notes || "").trim(),
+    items: Array.isArray(meal?.items)
+      ? meal.items.map((item, itemIndex) => ({
+          id: item?.id || `meal-item-${mealIndex + 1}-${itemIndex + 1}`,
+          name: String(item?.name || "").trim() || `פריט ${itemIndex + 1}`,
+          amount: String(item?.amount || "").trim(),
+          imageUrl: String(item?.imageUrl || "").trim(),
+          calories: toNumberOrNull(item?.calories) ?? 0,
+          protein: toNumberOrNull(item?.protein) ?? 0,
+          carbs: toNumberOrNull(item?.carbs) ?? 0,
+          fat: toNumberOrNull(item?.fat) ?? 0,
+          notes: String(item?.notes || "").trim(),
+        }))
+      : [],
+  }));
+}
+
+function normalizeNutritionPlanData(value) {
+  const source =
+    value && typeof value === "object" && !Array.isArray(value) ? value : {};
+
+  return {
+    title: String(source.title || "").trim(),
+    notes: String(source.notes || "").trim(),
+    dailyTargets: normalizeNutritionTargets(source.dailyTargets || {}),
+    meals: normalizeNutritionMeals(source.meals || []),
+  };
+}
+
+function normalizeWorkoutTargets(value) {
+  const source =
+    value && typeof value === "object" && !Array.isArray(value) ? value : {};
+
+  return {
+    workouts: toNumberOrNull(source.workouts),
+    cardioMinutes: toNumberOrNull(source.cardioMinutes),
+    steps: toNumberOrNull(source.steps),
+  };
+}
+
+function normalizeWorkoutDays(value) {
+  if (!Array.isArray(value)) return [];
+
+  return value.map((day, dayIndex) => ({
+    id: day?.id || `day-${dayIndex + 1}`,
+    name: String(day?.name || "").trim() || `יום ${dayIndex + 1}`,
+    focus: String(day?.focus || "").trim(),
+    notes: String(day?.notes || "").trim(),
+    exercises: Array.isArray(day?.exercises)
+      ? day.exercises.map((exercise, exerciseIndex) => ({
+          id:
+            exercise?.id ||
+            `exercise-${dayIndex + 1}-${exerciseIndex + 1}`,
+          order:
+            toIntegerOrNull(exercise?.order) ?? exerciseIndex + 1,
+          name:
+            String(exercise?.name || "").trim() ||
+            `תרגיל ${exerciseIndex + 1}`,
+          externalExerciseId: String(exercise?.externalExerciseId || "").trim(),
+          mediaUrl: String(exercise?.mediaUrl || "").trim(),
+          sets: toNumberOrNull(exercise?.sets),
+          reps: toNumberOrNull(exercise?.reps),
+          restSeconds: toNumberOrNull(exercise?.restSeconds),
+          durationSeconds: toNumberOrNull(exercise?.durationSeconds),
+          notes: String(exercise?.notes || "").trim(),
+        }))
+      : [],
+  }));
+}
+
+function normalizeWorkoutPlanData(value) {
+  const source =
+    value && typeof value === "object" && !Array.isArray(value) ? value : {};
+
+  return {
+    title: String(source.title || "").trim(),
+    goalFocus: String(source.goalFocus || "").trim(),
+    notes: String(source.notes || "").trim(),
+    weeklyTargets: normalizeWorkoutTargets(source.weeklyTargets || {}),
+    days: normalizeWorkoutDays(source.days || []),
+  };
+}
+
+function hasNutritionPlanContent(plan) {
+  if (!plan) return false;
+
+  return Boolean(
+    plan.title ||
+      plan.notes ||
+      (Array.isArray(plan.meals) && plan.meals.length > 0) ||
+      Object.values(plan.dailyTargets || {}).some(
+        (value) => value !== null && value !== undefined,
+      ),
+  );
+}
+
+function hasWorkoutPlanContent(plan) {
+  if (!plan) return false;
+
+  return Boolean(
+    plan.title ||
+      plan.goalFocus ||
+      plan.notes ||
+      (Array.isArray(plan.days) && plan.days.length > 0) ||
+      Object.values(plan.weeklyTargets || {}).some(
+        (value) => value !== null && value !== undefined,
+      ),
+  );
+}
+
+function normalizePlanTemplateProfiles(value) {
+  if (!Array.isArray(value)) return [];
+
+  const profilesByType = new Map();
+
+  value.forEach((profile, index) => {
+    const typeLabel = normalizeClientTypeLabel(
+      profile?.typeLabel || profile?.label || profile?.clientType,
+    );
+
+    if (!typeLabel) {
+      return;
+    }
+
+    const nutritionTemplate = normalizeNutritionPlanData(
+      profile?.nutritionTemplate,
+    );
+    const workoutTemplate = normalizeWorkoutPlanData(profile?.workoutTemplate);
+
+    if (
+      !hasNutritionPlanContent(nutritionTemplate) &&
+      !hasWorkoutPlanContent(workoutTemplate)
+    ) {
+      return;
+    }
+
+    profilesByType.set(normalizeClientTypeKey(typeLabel), {
+      id: profile?.id || `plan-template-profile-${index + 1}`,
+      typeKey: normalizeClientTypeKey(typeLabel),
+      typeLabel,
+      nutritionTemplate: hasNutritionPlanContent(nutritionTemplate)
+        ? nutritionTemplate
+        : null,
+      workoutTemplate: hasWorkoutPlanContent(workoutTemplate)
+        ? workoutTemplate
+        : null,
+      updatedAt: profile?.updatedAt
+        ? toIsoString(profile.updatedAt)
+        : new Date().toISOString(),
+    });
+  });
+
+  return Array.from(profilesByType.values());
+}
+
 function mapUser(row) {
   if (!row) return null;
 
@@ -207,6 +390,7 @@ function mapUser(row) {
     age: toIntegerOrNull(row.age),
     goal: row.goal || null,
     activityLevel: row.activity_level || null,
+    clientType: normalizeClientTypeLabel(row.client_type || ""),
     coachName: row.coach_name || null,
     coachPhone: row.coach_phone || null,
     coachStatus: row.coach_status || "",
@@ -215,6 +399,9 @@ function mapUser(row) {
     checkInTemplate: normalizeCheckInTemplate(row.check_in_template || {}),
     quickMessageTemplates: normalizeQuickMessageTemplates(
       row.quick_message_templates || [],
+    ),
+    planTemplateProfiles: normalizePlanTemplateProfiles(
+      row.plan_template_profiles || [],
     ),
     isActive: toBoolean(row.is_active, true),
     notes: row.notes || "",
@@ -247,13 +434,17 @@ function mapGoals(row) {
 function mapNutritionPlan(row) {
   if (!row) return null;
 
+  const normalizedPlan = normalizeNutritionPlanData({
+    title: row.title,
+    notes: row.notes,
+    dailyTargets: row.daily_targets || {},
+    meals: row.meals || [],
+  });
+
   return {
     id: row.id,
     userId: row.user_id,
-    title: row.title || null,
-    notes: row.notes || "",
-    dailyTargets: row.daily_targets || {},
-    meals: row.meals || [],
+    ...normalizedPlan,
     updatedBy: row.updated_by || null,
     createdAt: toIsoString(row.created_at),
     updatedAt: toIsoString(row.updated_at),
@@ -263,14 +454,18 @@ function mapNutritionPlan(row) {
 function mapWorkoutPlan(row) {
   if (!row) return null;
 
+  const normalizedPlan = normalizeWorkoutPlanData({
+    title: row.title,
+    goalFocus: row.goal_focus,
+    notes: row.notes,
+    weeklyTargets: row.weekly_targets || {},
+    days: row.days || [],
+  });
+
   return {
     id: row.id,
     userId: row.user_id,
-    title: row.title || null,
-    goalFocus: row.goal_focus || "",
-    notes: row.notes || "",
-    weeklyTargets: row.weekly_targets || {},
-    days: row.days || [],
+    ...normalizedPlan,
     updatedBy: row.updated_by || null,
     createdAt: toIsoString(row.created_at),
     updatedAt: toIsoString(row.updated_at),
@@ -389,9 +584,7 @@ function createEmptyFoodDiaryMeals() {
 
 function mapFoodDiaryItem(item, mealType, index) {
   return {
-    id:
-      item?.id ||
-      `food-diary-${mealType}-${index + 1}`,
+    id: item?.id || `food-diary-${mealType}-${index + 1}`,
     name: item?.name || "פריט מזון",
     portion: item?.portion || "",
     calories: toNumberOrNull(item?.calories) ?? 0,
@@ -451,7 +644,10 @@ function normalizeFoodDiaryPayload(payload, fallbackDate) {
 function mapFoodDiaryEntry(row) {
   if (!row) return null;
 
-  const normalized = normalizeFoodDiaryPayload(row.payload || {}, row.created_at);
+  const normalized = normalizeFoodDiaryPayload(
+    row.payload || {},
+    row.created_at,
+  );
 
   return {
     id: row.id,
@@ -618,7 +814,9 @@ async function createUser(userData) {
       userData.coachPhone || null,
       userData.coachStatus || "",
       JSON.stringify(normalizeTextList(userData.coachTags || [])),
-      JSON.stringify(normalizeHabitAssignments(userData.habitAssignments || [])),
+      JSON.stringify(
+        normalizeHabitAssignments(userData.habitAssignments || []),
+      ),
       JSON.stringify(normalizeCheckInTemplate(userData.checkInTemplate || {})),
       toBoolean(userData.isActive, true),
       userData.notes || "",
@@ -649,6 +847,10 @@ async function updateUser(id, updates) {
     age: { column: "age", transform: toIntegerOrNull },
     goal: { column: "goal" },
     activityLevel: { column: "activity_level" },
+    clientType: {
+      column: "client_type",
+      transform: normalizeClientTypeLabel,
+    },
     coachName: { column: "coach_name" },
     coachPhone: { column: "coach_phone" },
     coachStatus: { column: "coach_status" },
@@ -670,7 +872,14 @@ async function updateUser(id, updates) {
     quickMessageTemplates: {
       column: "quick_message_templates",
       cast: "jsonb",
-      transform: (value) => JSON.stringify(normalizeQuickMessageTemplates(value)),
+      transform: (value) =>
+        JSON.stringify(normalizeQuickMessageTemplates(value)),
+    },
+    planTemplateProfiles: {
+      column: "plan_template_profiles",
+      cast: "jsonb",
+      transform: (value) =>
+        JSON.stringify(normalizePlanTemplateProfiles(value)),
     },
     isActive: {
       column: "is_active",
@@ -1089,7 +1298,10 @@ async function listFoodDiaryEntries(userId, limit = 7) {
 async function saveFoodDiaryEntry(userId, date, entryData) {
   const normalizedDate =
     toDateOnly(date) || new Date().toISOString().split("T")[0];
-  const normalizedEntry = normalizeFoodDiaryPayload(entryData || {}, normalizedDate);
+  const normalizedEntry = normalizeFoodDiaryPayload(
+    entryData || {},
+    normalizedDate,
+  );
   const payload = {
     type: "food-diary",
     date: normalizedDate,
@@ -1292,11 +1504,13 @@ function buildUserIdPlaceholders(userIds) {
 }
 
 async function getClientEngagementOverview(userIds = []) {
-  const normalizedUserIds = [...new Set(
-    (Array.isArray(userIds) ? userIds : [userIds])
-      .map((userId) => String(userId || "").trim())
-      .filter(Boolean),
-  )];
+  const normalizedUserIds = [
+    ...new Set(
+      (Array.isArray(userIds) ? userIds : [userIds])
+        .map((userId) => String(userId || "").trim())
+        .filter(Boolean),
+    ),
+  ];
 
   if (normalizedUserIds.length === 0) {
     return {};
@@ -1310,10 +1524,16 @@ async function getClientEngagementOverview(userIds = []) {
     ]),
   );
 
-  const [updatesResult, meetingsResult, messagesResult, checkInsResult, habitLogsResult, weightResult] =
-    await Promise.all([
-      query(
-        `
+  const [
+    updatesResult,
+    meetingsResult,
+    messagesResult,
+    checkInsResult,
+    habitLogsResult,
+    weightResult,
+  ] = await Promise.all([
+    query(
+      `
           SELECT
             user_id,
             COUNT(*) FILTER (WHERE read_by_coach = false)::int AS unread_updates_count,
@@ -1322,10 +1542,10 @@ async function getClientEngagementOverview(userIds = []) {
           WHERE user_id IN (${placeholders})
           GROUP BY user_id
         `,
-        normalizedUserIds,
-      ),
-      query(
-        `
+      normalizedUserIds,
+    ),
+    query(
+      `
           SELECT
             user_id,
             COUNT(*) FILTER (WHERE status = 'ממתין לאישור')::int AS pending_meetings_count,
@@ -1334,10 +1554,10 @@ async function getClientEngagementOverview(userIds = []) {
           WHERE user_id IN (${placeholders})
           GROUP BY user_id
         `,
-        normalizedUserIds,
-      ),
-      query(
-        `
+      normalizedUserIds,
+    ),
+    query(
+      `
           SELECT
             user_id,
             MAX(created_at) FILTER (WHERE from_role = 'client') AS last_client_message_at,
@@ -1346,43 +1566,45 @@ async function getClientEngagementOverview(userIds = []) {
           WHERE user_id IN (${placeholders})
           GROUP BY user_id
         `,
-        normalizedUserIds,
-      ),
-      query(
-        `
+      normalizedUserIds,
+    ),
+    query(
+      `
           SELECT user_id, MAX(submitted_at) AS last_check_in_at
           FROM check_in_entries
           WHERE user_id IN (${placeholders})
           GROUP BY user_id
         `,
-        normalizedUserIds,
-      ),
-      query(
-        `
+      normalizedUserIds,
+    ),
+    query(
+      `
           SELECT user_id, MAX(updated_at) AS last_habit_log_at
           FROM habit_logs
           WHERE user_id IN (${placeholders})
           GROUP BY user_id
         `,
-        normalizedUserIds,
-      ),
-      query(
-        `
+      normalizedUserIds,
+    ),
+    query(
+      `
           SELECT user_id, MAX(created_at) AS last_weight_entry_at
           FROM weight_history
           WHERE user_id IN (${placeholders})
           GROUP BY user_id
         `,
-        normalizedUserIds,
-      ),
-    ]);
+      normalizedUserIds,
+    ),
+  ]);
 
   updatesResult.rows.forEach((row) => {
     const current = baseOverview[row.user_id];
     if (!current) return;
 
     current.unreadUpdatesCount = Number(row.unread_updates_count) || 0;
-    current.lastUpdateAt = row.last_update_at ? toIsoString(row.last_update_at) : null;
+    current.lastUpdateAt = row.last_update_at
+      ? toIsoString(row.last_update_at)
+      : null;
   });
 
   meetingsResult.rows.forEach((row) => {
@@ -1390,7 +1612,9 @@ async function getClientEngagementOverview(userIds = []) {
     if (!current) return;
 
     current.pendingMeetingsCount = Number(row.pending_meetings_count) || 0;
-    current.lastMeetingAt = row.last_meeting_at ? toIsoString(row.last_meeting_at) : null;
+    current.lastMeetingAt = row.last_meeting_at
+      ? toIsoString(row.last_meeting_at)
+      : null;
   });
 
   messagesResult.rows.forEach((row) => {

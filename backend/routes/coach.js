@@ -13,6 +13,8 @@
  * POST /api/coach/messages/:userId - שלח הודעה ללקוחה
  * GET  /api/coach/message-templates - תבניות הודעות מהירות למאמנת
  * PUT  /api/coach/message-templates - שמירת תבניות הודעות מהירות
+ * GET  /api/coach/plan-templates - תבניות תזונה ואימון לפי סוג לקוחה
+ * PUT  /api/coach/plan-templates - שמירת תבניות לפי סוג לקוחה
  * GET  /api/coach/stats           - סטטיסטיקות כלליות
  * GET  /api/coach/meals           - מאגר ארוחות של המאמנת
  * GET  /api/coach/meals/:id       - ארוחה ספציפית מהמאגר
@@ -79,6 +81,7 @@ const CHECK_IN_QUESTION_TYPES = new Set([
   "scale",
 ]);
 const MAX_QUICK_MESSAGE_TEMPLATES = 12;
+const MAX_PLAN_TEMPLATE_PROFILES = 24;
 const MS_IN_DAY = 24 * 60 * 60 * 1000;
 const MS_IN_HOUR = 60 * 60 * 1000;
 const AUTOMATION_THRESHOLDS = Object.freeze({
@@ -102,6 +105,16 @@ function createBadRequest(message) {
   const err = new Error(message);
   err.status = 400;
   return err;
+}
+
+function normalizeClientTypeLabel(value) {
+  return String(value || "")
+    .trim()
+    .replace(/\s+/g, " ");
+}
+
+function normalizeClientTypeKey(value) {
+  return normalizeClientTypeLabel(value).toLowerCase();
 }
 
 async function getClientOrNull(userId) {
@@ -129,13 +142,22 @@ function formatDaysAgo(days) {
 }
 
 function getFirstName(name) {
-  return String(name || "").trim().split(/\s+/)[0] || "יקרה";
+  return (
+    String(name || "")
+      .trim()
+      .split(/\s+/)[0] || "יקרה"
+  );
 }
 
 function getMostRecentSignal(signals = []) {
-  return signals
-    .filter((signal) => toTimestamp(signal?.occurredAt))
-    .sort((left, right) => toTimestamp(right.occurredAt) - toTimestamp(left.occurredAt))[0] || null;
+  return (
+    signals
+      .filter((signal) => toTimestamp(signal?.occurredAt))
+      .sort(
+        (left, right) =>
+          toTimestamp(right.occurredAt) - toTimestamp(left.occurredAt),
+      )[0] || null
+  );
 }
 
 function createAutomationReason(id, label, severity = "medium") {
@@ -207,29 +229,48 @@ function buildSuggestedReminderText(client, context = {}) {
     nudges.push("לא התקבל ממך עדכון בימים האחרונים");
   }
 
-  const reminderBody = nudges.length > 0
-    ? `${nudges.join(" ו")}. אם משהו נתקע או שצריך התאמה, כתבי לי כאן ואעזור.`
-    : "רציתי לבדוק מה שלומך ואם יש משהו שצריך לחדד או להתאים בתהליך.";
+  const reminderBody =
+    nudges.length > 0
+      ? `${nudges.join(" ו")}. אם משהו נתקע או שצריך התאמה, כתבי לי כאן ואעזור.`
+      : "רציתי לבדוק מה שלומך ואם יש משהו שצריך לחדד או להתאים בתהליך.";
 
   return `היי ${firstName}, ${reminderBody}`;
 }
 
-function buildAutomationStatus(client, overview = {}, nowTimestamp = Date.now()) {
+function buildAutomationStatus(
+  client,
+  overview = {},
+  nowTimestamp = Date.now(),
+) {
   const unreadUpdatesCount = Number(overview.unreadUpdatesCount) || 0;
   const pendingMeetingsCount = Number(overview.pendingMeetingsCount) || 0;
   const activeHabitsCount = Array.isArray(client?.habitAssignments)
-    ? client.habitAssignments.filter((habit) => habit?.isActive !== false).length
+    ? client.habitAssignments.filter((habit) => habit?.isActive !== false)
+        .length
     : 0;
-  const hasCheckInTemplate = Array.isArray(client?.checkInTemplate?.questions)
-    && client.checkInTemplate.questions.length > 0;
+  const hasCheckInTemplate =
+    Array.isArray(client?.checkInTemplate?.questions) &&
+    client.checkInTemplate.questions.length > 0;
   const trackingStartAt = client?.updatedAt || client?.createdAt || null;
 
   const clientSignals = [
     { type: "update", label: "עדכון שבועי", occurredAt: overview.lastUpdateAt },
-    { type: "meeting", label: "בקשת פגישה", occurredAt: overview.lastMeetingAt },
-    { type: "message", label: "הודעת לקוחה", occurredAt: overview.lastClientMessageAt },
+    {
+      type: "meeting",
+      label: "בקשת פגישה",
+      occurredAt: overview.lastMeetingAt,
+    },
+    {
+      type: "message",
+      label: "הודעת לקוחה",
+      occurredAt: overview.lastClientMessageAt,
+    },
     { type: "checkin", label: "צ׳ק-אין", occurredAt: overview.lastCheckInAt },
-    { type: "habit", label: "סימון הרגלים", occurredAt: overview.lastHabitLogAt },
+    {
+      type: "habit",
+      label: "סימון הרגלים",
+      occurredAt: overview.lastHabitLogAt,
+    },
     { type: "weight", label: "שקילה", occurredAt: overview.lastWeightEntryAt },
   ];
 
@@ -241,9 +282,13 @@ function buildAutomationStatus(client, overview = {}, nowTimestamp = Date.now())
     : accountAgeDays;
   const daysSinceCheckIn = getDaysSince(overview.lastCheckInAt, nowTimestamp);
   const daysSinceHabitLog = getDaysSince(overview.lastHabitLogAt, nowTimestamp);
-  const daysSinceCoachOutreach = getDaysSince(overview.lastCoachMessageAt, nowTimestamp);
+  const daysSinceCoachOutreach = getDaysSince(
+    overview.lastCoachMessageAt,
+    nowTimestamp,
+  );
   const hasRespondedToLastCoachMessage = overview.lastCoachMessageAt
-    ? toTimestamp(lastClientActivity?.occurredAt) > toTimestamp(overview.lastCoachMessageAt)
+    ? toTimestamp(lastClientActivity?.occurredAt) >
+      toTimestamp(overview.lastCoachMessageAt)
     : null;
 
   const reasons = [];
@@ -254,25 +299,33 @@ function buildAutomationStatus(client, overview = {}, nowTimestamp = Date.now())
     afterCoachReminder: false,
   };
 
-  if (!lastClientActivity && accountAgeDays !== null && accountAgeDays >= AUTOMATION_THRESHOLDS.firstActivityGraceDays) {
+  if (
+    !lastClientActivity &&
+    accountAgeDays !== null &&
+    accountAgeDays >= AUTOMATION_THRESHOLDS.firstActivityGraceDays
+  ) {
     reasons.push(
       createAutomationReason(
         "no-first-response",
         `הלקוחה הצטרפה לפני ${accountAgeDays} ימים ועדיין לא התקבלה ממנה פעילות`,
-        accountAgeDays >= AUTOMATION_THRESHOLDS.generalFollowUpDays ? "high" : "medium",
+        accountAgeDays >= AUTOMATION_THRESHOLDS.generalFollowUpDays
+          ? "high"
+          : "medium",
       ),
     );
     reminderContext.activityOverdue = true;
   } else if (
-    lastClientActivity
-    && daysSinceClientActivity !== null
-    && daysSinceClientActivity >= AUTOMATION_THRESHOLDS.generalFollowUpDays
+    lastClientActivity &&
+    daysSinceClientActivity !== null &&
+    daysSinceClientActivity >= AUTOMATION_THRESHOLDS.generalFollowUpDays
   ) {
     reasons.push(
       createAutomationReason(
         "stale-activity",
         `אין פעילות מצד הלקוחה כבר ${daysSinceClientActivity} ימים`,
-        daysSinceClientActivity >= AUTOMATION_THRESHOLDS.generalUrgentDays ? "high" : "medium",
+        daysSinceClientActivity >= AUTOMATION_THRESHOLDS.generalUrgentDays
+          ? "high"
+          : "medium",
       ),
     );
     reminderContext.activityOverdue = true;
@@ -282,8 +335,8 @@ function buildAutomationStatus(client, overview = {}, nowTimestamp = Date.now())
     const checkInBaselineDays = daysSinceCheckIn ?? trackingAgeDays;
 
     if (
-      checkInBaselineDays !== null
-      && checkInBaselineDays >= AUTOMATION_THRESHOLDS.checkInFollowUpDays
+      checkInBaselineDays !== null &&
+      checkInBaselineDays >= AUTOMATION_THRESHOLDS.checkInFollowUpDays
     ) {
       reasons.push(
         createAutomationReason(
@@ -291,7 +344,9 @@ function buildAutomationStatus(client, overview = {}, nowTimestamp = Date.now())
           overview.lastCheckInAt
             ? `לא נשלח צ׳ק-אין כבר ${checkInBaselineDays} ימים`
             : `הוגדר צ׳ק-אין ועדיין לא נשלחה ממנו תגובה כבר ${checkInBaselineDays} ימים`,
-          checkInBaselineDays >= AUTOMATION_THRESHOLDS.checkInUrgentDays ? "high" : "medium",
+          checkInBaselineDays >= AUTOMATION_THRESHOLDS.checkInUrgentDays
+            ? "high"
+            : "medium",
         ),
       );
       reminderContext.checkInOverdue = true;
@@ -302,8 +357,8 @@ function buildAutomationStatus(client, overview = {}, nowTimestamp = Date.now())
     const habitBaselineDays = daysSinceHabitLog ?? trackingAgeDays;
 
     if (
-      habitBaselineDays !== null
-      && habitBaselineDays >= AUTOMATION_THRESHOLDS.habitFollowUpDays
+      habitBaselineDays !== null &&
+      habitBaselineDays >= AUTOMATION_THRESHOLDS.habitFollowUpDays
     ) {
       reasons.push(
         createAutomationReason(
@@ -311,7 +366,9 @@ function buildAutomationStatus(client, overview = {}, nowTimestamp = Date.now())
           overview.lastHabitLogAt
             ? `לא סומנו הרגלים כבר ${habitBaselineDays} ימים`
             : `הוגדרו ${activeHabitsCount} הרגלים ועדיין אין סימון כבר ${habitBaselineDays} ימים`,
-          habitBaselineDays >= AUTOMATION_THRESHOLDS.habitUrgentDays ? "high" : "medium",
+          habitBaselineDays >= AUTOMATION_THRESHOLDS.habitUrgentDays
+            ? "high"
+            : "medium",
         ),
       );
       reminderContext.habitOverdue = true;
@@ -319,31 +376,37 @@ function buildAutomationStatus(client, overview = {}, nowTimestamp = Date.now())
   }
 
   if (
-    overview.lastCoachMessageAt
-    && hasRespondedToLastCoachMessage === false
-    && daysSinceCoachOutreach !== null
-    && daysSinceCoachOutreach >= AUTOMATION_THRESHOLDS.postReminderFollowUpDays
+    overview.lastCoachMessageAt &&
+    hasRespondedToLastCoachMessage === false &&
+    daysSinceCoachOutreach !== null &&
+    daysSinceCoachOutreach >= AUTOMATION_THRESHOLDS.postReminderFollowUpDays
   ) {
     reasons.push(
       createAutomationReason(
         "post-reminder-no-response",
         `נשלחה הודעת מעקב לפני ${daysSinceCoachOutreach} ימים ועדיין אין תגובה`,
-        daysSinceCoachOutreach >= AUTOMATION_THRESHOLDS.postReminderUrgentDays ? "high" : "medium",
+        daysSinceCoachOutreach >= AUTOMATION_THRESHOLDS.postReminderUrgentDays
+          ? "high"
+          : "medium",
       ),
     );
     reminderContext.afterCoachReminder = true;
   }
 
-  const hasCoachQueueAttention = unreadUpdatesCount > 0 || pendingMeetingsCount > 0;
+  const hasCoachQueueAttention =
+    unreadUpdatesCount > 0 || pendingMeetingsCount > 0;
   const level = getAutomationLevel(reasons, hasCoachQueueAttention);
   const cooldownMsRemaining = overview.lastCoachMessageAt
     ? Math.max(
         0,
-        AUTOMATION_THRESHOLDS.reminderCooldownHours * MS_IN_HOUR
-          - (nowTimestamp - toTimestamp(overview.lastCoachMessageAt)),
+        AUTOMATION_THRESHOLDS.reminderCooldownHours * MS_IN_HOUR -
+          (nowTimestamp - toTimestamp(overview.lastCoachMessageAt)),
       )
     : 0;
-  const queueSummary = buildCoachQueueSummary(unreadUpdatesCount, pendingMeetingsCount);
+  const queueSummary = buildCoachQueueSummary(
+    unreadUpdatesCount,
+    pendingMeetingsCount,
+  );
   const isNonResponsive = reasons.length > 0;
 
   return {
@@ -352,9 +415,9 @@ function buildAutomationStatus(client, overview = {}, nowTimestamp = Date.now())
     needsAttention: hasCoachQueueAttention || isNonResponsive,
     isNonResponsive,
     summaryText:
-      reasons[0]?.label
-      || queueSummary
-      || (lastClientActivity
+      reasons[0]?.label ||
+      queueSummary ||
+      (lastClientActivity
         ? `פעילות אחרונה: ${lastClientActivity.label} ${formatDaysAgo(daysSinceClientActivity)}`
         : "עדיין לא התקבלה פעילות מצד הלקוחה"),
     unreadUpdatesCount,
@@ -382,20 +445,32 @@ function buildAutomationStatus(client, overview = {}, nowTimestamp = Date.now())
     reminder: {
       shouldSendNow: isNonResponsive && cooldownMsRemaining === 0,
       cooldownHoursRemaining:
-        cooldownMsRemaining > 0 ? Math.ceil(cooldownMsRemaining / MS_IN_HOUR) : 0,
+        cooldownMsRemaining > 0
+          ? Math.ceil(cooldownMsRemaining / MS_IN_HOUR)
+          : 0,
       lastSentAt: overview.lastCoachMessageAt || null,
-      suggestedText: isNonResponsive ? buildSuggestedReminderText(client, reminderContext) : "",
+      suggestedText: isNonResponsive
+        ? buildSuggestedReminderText(client, reminderContext)
+        : "",
       recommendedChannel: "message",
     },
   };
 }
 
-function attachAutomationStatusToClient(client, engagementOverviewMap, nowTimestamp = Date.now()) {
+function attachAutomationStatusToClient(
+  client,
+  engagementOverviewMap,
+  nowTimestamp = Date.now(),
+) {
   if (!client) return null;
 
   return {
     ...client,
-    automationStatus: buildAutomationStatus(client, engagementOverviewMap?.[client.id], nowTimestamp),
+    automationStatus: buildAutomationStatus(
+      client,
+      engagementOverviewMap?.[client.id],
+      nowTimestamp,
+    ),
   };
 }
 
@@ -522,14 +597,14 @@ function parseOptionalTags(value) {
       : null;
 
   if (!items) {
-    throw createBadRequest("השדה coachTags חייב להיות רשימה או טקסט מופרד בפסיקים");
+    throw createBadRequest(
+      "השדה coachTags חייב להיות רשימה או טקסט מופרד בפסיקים",
+    );
   }
 
-  return [...new Set(
-    items
-      .map((item) => String(item || "").trim())
-      .filter(Boolean),
-  )];
+  return [
+    ...new Set(items.map((item) => String(item || "").trim()).filter(Boolean)),
+  ];
 }
 
 function buildHabitAssignmentsPayload(value) {
@@ -543,16 +618,26 @@ function buildHabitAssignmentsPayload(value) {
 
     const frequency = parseOptionalText(habit?.frequency) || "daily";
     if (!HABIT_FREQUENCIES.has(frequency)) {
-      throw createBadRequest(`התדירות של הרגל ${index + 1} חייבת להיות daily או weekly`);
+      throw createBadRequest(
+        `התדירות של הרגל ${index + 1} חייבת להיות daily או weekly`,
+      );
     }
 
     return {
       id: parseOptionalText(habit?.id) || `habit-${index + 1}`,
       title,
       frequency,
-      targetCount: parseOptionalInteger(habit?.targetCount, `habitAssignments[${index}].targetCount`) || 1,
+      targetCount:
+        parseOptionalInteger(
+          habit?.targetCount,
+          `habitAssignments[${index}].targetCount`,
+        ) || 1,
       notes: parseOptionalText(habit?.notes) || "",
-      isActive: parseOptionalBoolean(habit?.isActive, `habitAssignments[${index}].isActive`) ?? true,
+      isActive:
+        parseOptionalBoolean(
+          habit?.isActive,
+          `habitAssignments[${index}].isActive`,
+        ) ?? true,
     };
   });
 }
@@ -564,32 +649,33 @@ function buildCheckInTemplatePayload(value) {
     throw createBadRequest("השדה checkInTemplate חייב להיות אובייקט");
   }
 
-  const questions = ensureArray(value.questions || [], "checkInTemplate.questions").map(
-    (question, index) => {
-      const label = parseOptionalText(question?.label) || "";
-      if (!label) {
-        throw createBadRequest(`חסרה כותרת לשאלת צ׳ק-אין מספר ${index + 1}`);
-      }
+  const questions = ensureArray(
+    value.questions || [],
+    "checkInTemplate.questions",
+  ).map((question, index) => {
+    const label = parseOptionalText(question?.label) || "";
+    if (!label) {
+      throw createBadRequest(`חסרה כותרת לשאלת צ׳ק-אין מספר ${index + 1}`);
+    }
 
-      const type = parseOptionalText(question?.type) || "shortText";
-      if (!CHECK_IN_QUESTION_TYPES.has(type)) {
-        throw createBadRequest(`סוג השאלה ${label} אינו נתמך`);
-      }
+    const type = parseOptionalText(question?.type) || "shortText";
+    if (!CHECK_IN_QUESTION_TYPES.has(type)) {
+      throw createBadRequest(`סוג השאלה ${label} אינו נתמך`);
+    }
 
-      return {
-        id: parseOptionalText(question?.id) || `check-in-question-${index + 1}`,
-        label,
-        type,
-        placeholder: parseOptionalText(question?.placeholder) || "",
-        helperText: parseOptionalText(question?.helperText) || "",
-        required:
-          parseOptionalBoolean(
-            question?.required,
-            `checkInTemplate.questions[${index}].required`,
-          ) ?? true,
-      };
-    },
-  );
+    return {
+      id: parseOptionalText(question?.id) || `check-in-question-${index + 1}`,
+      label,
+      type,
+      placeholder: parseOptionalText(question?.placeholder) || "",
+      helperText: parseOptionalText(question?.helperText) || "",
+      required:
+        parseOptionalBoolean(
+          question?.required,
+          `checkInTemplate.questions[${index}].required`,
+        ) ?? true,
+    };
+  });
 
   return {
     title: parseOptionalText(value.title) || "",
@@ -620,11 +706,72 @@ function buildQuickMessageTemplatesPayload(value) {
     }
 
     return {
-      id: parseOptionalText(template.id) || `quick-message-template-${index + 1}`,
+      id:
+        parseOptionalText(template.id) || `quick-message-template-${index + 1}`,
       title: parseOptionalText(template.title) || `תבנית ${index + 1}`,
       text,
     };
   });
+}
+
+function buildPlanTemplateProfilesPayload(value) {
+  if (value === undefined) return undefined;
+
+  const profiles = ensureArray(value, "planTemplateProfiles");
+
+  if (profiles.length > MAX_PLAN_TEMPLATE_PROFILES) {
+    throw createBadRequest(
+      `אפשר לשמור עד ${MAX_PLAN_TEMPLATE_PROFILES} סוגי לקוחה עם תבניות`,
+    );
+  }
+
+  const profilesByType = new Map();
+
+  profiles.forEach((profile, index) => {
+    if (!profile || typeof profile !== "object" || Array.isArray(profile)) {
+      throw createBadRequest(`פרופיל תבנית מספר ${index + 1} אינו תקין`);
+    }
+
+    const typeLabel = normalizeClientTypeLabel(
+      parseOptionalText(
+        profile.typeLabel || profile.label || profile.clientType,
+      ) || "",
+    );
+
+    if (!typeLabel) {
+      throw createBadRequest(`חסר סוג לקוחה בפרופיל תבנית מספר ${index + 1}`);
+    }
+
+    const nutritionTemplate =
+      profile.nutritionTemplate !== undefined && profile.nutritionTemplate !== null
+        ? buildNutritionPlanPayload(profile.nutritionTemplate || {})
+        : undefined;
+    const workoutTemplate =
+      profile.workoutTemplate !== undefined && profile.workoutTemplate !== null
+        ? buildWorkoutPlanPayload(profile.workoutTemplate || {})
+        : undefined;
+
+    const hasNutritionTemplate =
+      nutritionTemplate !== undefined && Object.keys(nutritionTemplate).length > 0;
+    const hasWorkoutTemplate =
+      workoutTemplate !== undefined && Object.keys(workoutTemplate).length > 0;
+
+    if (!hasNutritionTemplate && !hasWorkoutTemplate) {
+      throw createBadRequest(`חסרה תבנית תזונה או אימון עבור ${typeLabel}`);
+    }
+
+    profilesByType.set(normalizeClientTypeKey(typeLabel), {
+      id:
+        parseOptionalText(profile.id) || `plan-template-profile-${index + 1}`,
+      typeKey: normalizeClientTypeKey(typeLabel),
+      typeLabel,
+      nutritionTemplate: hasNutritionTemplate ? nutritionTemplate : null,
+      workoutTemplate: hasWorkoutTemplate ? workoutTemplate : null,
+      updatedAt: parseOptionalText(profile.updatedAt) || new Date().toISOString(),
+    });
+  });
+
+  return Array.from(profilesByType.values());
 }
 
 function buildMealItems(items, mealIndex) {
@@ -861,7 +1008,13 @@ router.get(
       rawClients.map((client) => client.id),
     );
     const clients = rawClients
-      .map((client) => attachAutomationStatusToClient(client, engagementOverviewMap, nowTimestamp))
+      .map((client) =>
+        attachAutomationStatusToClient(
+          client,
+          engagementOverviewMap,
+          nowTimestamp,
+        ),
+      )
       .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
 
     res.json({
@@ -936,11 +1089,18 @@ router.post(
       return res.status(404).json({ error: "לקוחה לא נמצאה" });
     }
 
-    const engagementOverviewMap = await getClientEngagementOverview([client.id]);
-    const automationStatus = buildAutomationStatus(client, engagementOverviewMap[client.id]);
+    const engagementOverviewMap = await getClientEngagementOverview([
+      client.id,
+    ]);
+    const automationStatus = buildAutomationStatus(
+      client,
+      engagementOverviewMap[client.id],
+    );
 
     if (!automationStatus.isNonResponsive) {
-      return res.status(400).json({ error: "כרגע אין צורך בתזכורת אוטומטית ללקוחה הזו" });
+      return res
+        .status(400)
+        .json({ error: "כרגע אין צורך בתזכורת אוטומטית ללקוחה הזו" });
     }
 
     if (!automationStatus.reminder.shouldSendNow) {
@@ -961,7 +1121,10 @@ router.post(
       success: true,
       message: `נשלחה תזכורת מעקב ל${client.name}`,
       data: message,
-      automationStatus: buildAutomationStatus(client, refreshedOverviewMap[client.id]),
+      automationStatus: buildAutomationStatus(
+        client,
+        refreshedOverviewMap[client.id],
+      ),
     });
   }),
 );
@@ -997,6 +1160,41 @@ router.put(
       success: true,
       message: "תבניות ההודעות נשמרו ✅",
       templates: updatedCoach?.quickMessageTemplates || [],
+    });
+  }),
+);
+
+router.get(
+  "/plan-templates",
+  asyncHandler(async (req, res) => {
+    const coach = await getUserById(req.user.id);
+
+    res.json({
+      success: true,
+      profiles: Array.isArray(coach?.planTemplateProfiles)
+        ? coach.planTemplateProfiles
+        : [],
+    });
+  }),
+);
+
+router.put(
+  "/plan-templates",
+  asyncHandler(async (req, res) => {
+    const profiles = buildPlanTemplateProfilesPayload(req.body?.profiles);
+
+    if (profiles === undefined) {
+      return res.status(400).json({ error: "יש לשלוח מערך profiles" });
+    }
+
+    const updatedCoach = await updateUser(req.user.id, {
+      planTemplateProfiles: profiles,
+    });
+
+    res.json({
+      success: true,
+      message: "תבניות הסוג נשמרו ✅",
+      profiles: updatedCoach?.planTemplateProfiles || [],
     });
   }),
 );
@@ -1231,6 +1429,7 @@ router.put("/clients/:id", async (req, res) => {
       age,
       goal,
       activityLevel,
+      clientType,
       notes,
       coachStatus,
       coachTags,
@@ -1279,21 +1478,30 @@ router.put("/clients/:id", async (req, res) => {
       updates.activityLevel = normalizedActivityLevel;
     }
 
+    const normalizedClientType = parseOptionalText(clientType);
+    if (normalizedClientType !== undefined) {
+      updates.clientType = normalizeClientTypeLabel(normalizedClientType);
+    }
+
     const normalizedNotes = parseOptionalText(notes);
     if (normalizedNotes !== undefined) updates.notes = normalizedNotes;
 
     const normalizedCoachStatus = parseOptionalText(coachStatus);
-    if (normalizedCoachStatus !== undefined) updates.coachStatus = normalizedCoachStatus;
+    if (normalizedCoachStatus !== undefined)
+      updates.coachStatus = normalizedCoachStatus;
 
     const normalizedCoachTags = parseOptionalTags(coachTags);
-    if (normalizedCoachTags !== undefined) updates.coachTags = normalizedCoachTags;
+    if (normalizedCoachTags !== undefined)
+      updates.coachTags = normalizedCoachTags;
 
-    const normalizedHabitAssignments = buildHabitAssignmentsPayload(habitAssignments);
+    const normalizedHabitAssignments =
+      buildHabitAssignmentsPayload(habitAssignments);
     if (normalizedHabitAssignments !== undefined) {
       updates.habitAssignments = normalizedHabitAssignments;
     }
 
-    const normalizedCheckInTemplate = buildCheckInTemplatePayload(checkInTemplate);
+    const normalizedCheckInTemplate =
+      buildCheckInTemplatePayload(checkInTemplate);
     if (normalizedCheckInTemplate !== undefined) {
       updates.checkInTemplate = normalizedCheckInTemplate;
     }
@@ -1479,7 +1687,10 @@ router.post(
       success: true,
       message: `ההודעה נשלחה ל${client.name}! ✅`,
       data: message,
-      automationStatus: buildAutomationStatus(client, refreshedOverviewMap[client.id]),
+      automationStatus: buildAutomationStatus(
+        client,
+        refreshedOverviewMap[client.id],
+      ),
     });
   }),
 );
@@ -1516,8 +1727,12 @@ router.get(
         totalUpdates: updates.length,
         totalMeetings: meetings.length,
         totalMessages: messages.length,
-        nonResponsiveClients: automationStatuses.filter((status) => status.isNonResponsive).length,
-        urgentAutomationClients: automationStatuses.filter((status) => status.level === "urgent").length,
+        nonResponsiveClients: automationStatuses.filter(
+          (status) => status.isNonResponsive,
+        ).length,
+        urgentAutomationClients: automationStatuses.filter(
+          (status) => status.level === "urgent",
+        ).length,
         readyAutomationReminders: automationStatuses.filter(
           (status) => status.reminder.shouldSendNow,
         ).length,

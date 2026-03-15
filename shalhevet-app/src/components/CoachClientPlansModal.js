@@ -133,6 +133,7 @@ function createEmptyAccountForm() {
     age: '',
     goal: '',
     activityLevel: '',
+    clientType: '',
     notes: '',
     coachStatus: '',
     coachTagsText: '',
@@ -162,9 +163,11 @@ const DEFAULT_QUICK_MESSAGE_TEMPLATES = [
 ];
 
 function getClientFirstName(client) {
-  return String(client?.name || '')
-    .trim()
-    .split(/\s+/)[0] || 'יקרה';
+  return (
+    String(client?.name || '')
+      .trim()
+      .split(/\s+/)[0] || 'יקרה'
+  );
 }
 
 function createEmptyQuickMessageTemplate() {
@@ -181,6 +184,123 @@ function createSeedQuickMessageTemplates() {
     title: template.title,
     text: template.text,
   }));
+}
+
+function normalizeClientTypeLabel(value) {
+  return String(value || '')
+    .trim()
+    .replace(/\s+/g, ' ');
+}
+
+function normalizeClientTypeKey(value) {
+  return normalizeClientTypeLabel(value).toLowerCase();
+}
+
+function hasMeaningfulValue(value) {
+  return value !== undefined && value !== null && String(value).trim() !== '';
+}
+
+function hasNutritionTemplateContent(plan) {
+  if (!plan) return false;
+
+  return Boolean(
+    plan.title.trim() ||
+      plan.notes.trim() ||
+      plan.meals.length > 0 ||
+      Object.values(plan.dailyTargets || {}).some(hasMeaningfulValue)
+  );
+}
+
+function hasWorkoutTemplateContent(plan) {
+  if (!plan) return false;
+
+  return Boolean(
+    plan.title.trim() ||
+      plan.goalFocus.trim() ||
+      plan.notes.trim() ||
+      plan.days.length > 0 ||
+      Object.values(plan.weeklyTargets || {}).some(hasMeaningfulValue)
+  );
+}
+
+function findPlanTemplateProfile(profiles, clientType) {
+  const typeKey = normalizeClientTypeKey(clientType);
+
+  if (!typeKey || !Array.isArray(profiles)) {
+    return null;
+  }
+
+  return (
+    profiles.find(profile => normalizeClientTypeKey(profile?.typeLabel || profile?.typeKey) === typeKey) ||
+    null
+  );
+}
+
+function upsertPlanTemplateProfile(profiles, clientType, patch) {
+  const typeLabel = normalizeClientTypeLabel(clientType);
+  const typeKey = normalizeClientTypeKey(typeLabel);
+  const nextProfiles = Array.isArray(profiles) ? [...profiles] : [];
+  const index = nextProfiles.findIndex(
+    profile => normalizeClientTypeKey(profile?.typeLabel || profile?.typeKey) === typeKey
+  );
+
+  const currentProfile =
+    index >= 0
+      ? nextProfiles[index]
+      : {
+          id: makeId('plan-template-profile'),
+          typeLabel,
+          typeKey,
+          nutritionTemplate: null,
+          workoutTemplate: null,
+        };
+
+  const nextProfile = {
+    ...currentProfile,
+    ...patch,
+    typeLabel,
+    typeKey,
+    updatedAt: patch.updatedAt || new Date().toISOString(),
+  };
+
+  if (index >= 0) {
+    nextProfiles[index] = nextProfile;
+  } else {
+    nextProfiles.push(nextProfile);
+  }
+
+  return nextProfiles;
+}
+
+function formatPlanTemplateDate(value) {
+  if (!value) return '—';
+  return String(value).split('T')[0] || '—';
+}
+
+function getNutritionTemplateSummary(template) {
+  if (!template) {
+    return 'עדיין לא נשמרה תבנית תזונה לסוג הלקוחה הזה.';
+  }
+
+  const mealCount = Array.isArray(template.meals) ? template.meals.length : 0;
+  const calorieTarget = hasMeaningfulValue(template.dailyTargets?.calories)
+    ? `${template.dailyTargets.calories} קל׳`
+    : 'ללא יעד קלורי';
+
+  return `${template.title || 'תוכנית תזונה'} · ${mealCount} ארוחות · ${calorieTarget}`;
+}
+
+function getWorkoutTemplateSummary(template) {
+  if (!template) {
+    return 'עדיין לא נשמרה תבנית אימון לסוג הלקוחה הזה.';
+  }
+
+  const dayCount = Array.isArray(template.days) ? template.days.length : 0;
+  const weeklyTarget = hasMeaningfulValue(template.weeklyTargets?.workouts)
+    ? `${template.weeklyTargets.workouts} אימונים בשבוע`
+    : 'ללא יעד שבועי';
+
+  return `${template.title || 'תוכנית אימון'} · ${dayCount} ימי אימון · ${weeklyTarget}`;
 }
 
 function createEmptyHabit() {
@@ -510,6 +630,7 @@ function mapClientToAccountForm(client) {
     age: toInputValue(client.age),
     goal: client.goal || '',
     activityLevel: client.activityLevel || '',
+    clientType: client.clientType || '',
     notes: client.notes || '',
     coachStatus: client.coachStatus || '',
     coachTagsText: Array.isArray(client.coachTags) ? client.coachTags.join(', ') : '',
@@ -555,6 +676,7 @@ function serializeAccount(form) {
     age: form.age,
     goal: form.goal.trim(),
     activityLevel: form.activityLevel.trim(),
+    clientType: normalizeClientTypeLabel(form.clientType),
     notes: form.notes.trim(),
     coachStatus: form.coachStatus.trim(),
     coachTags: form.coachTagsText
@@ -821,7 +943,9 @@ export default function CoachClientPlansModal({ visible, clientId, onClose, onSa
   const [foodDiarySaving, setFoodDiarySaving] = useState(false);
   const [sendingAutomationReminder, setSendingAutomationReminder] = useState(false);
   const [quickMessageTemplates, setQuickMessageTemplates] = useState([]);
+  const [planTemplateProfiles, setPlanTemplateProfiles] = useState([]);
   const [messageTemplatesSaving, setMessageTemplatesSaving] = useState(false);
+  const [planTemplateBusyKey, setPlanTemplateBusyKey] = useState('');
   const [sendingQuickMessageId, setSendingQuickMessageId] = useState(null);
   const [client, setClient] = useState(null);
   const [accountForm, setAccountForm] = useState(createEmptyAccountForm());
@@ -860,7 +984,9 @@ export default function CoachClientPlansModal({ visible, clientId, onClose, onSa
     setFoodDiaryEditorVisible(false);
     setEditingFoodDiaryEntry(null);
     setQuickMessageTemplates([]);
+    setPlanTemplateProfiles([]);
     setMessageTemplatesSaving(false);
+    setPlanTemplateBusyKey('');
     setSendingQuickMessageId(null);
     setSendingAutomationReminder(false);
   }, []);
@@ -916,6 +1042,9 @@ export default function CoachClientPlansModal({ visible, clientId, onClose, onSa
     return matchesCategory && matchesSearch;
   });
 
+  const currentClientType = normalizeClientTypeLabel(accountForm.clientType);
+  const activePlanTemplateProfile = findPlanTemplateProfile(planTemplateProfiles, currentClientType);
+
   const loadClient = useCallback(async () => {
     if (!clientId) return;
 
@@ -948,6 +1077,13 @@ export default function CoachClientPlansModal({ visible, clientId, onClose, onSa
         );
       } catch {
         setQuickMessageTemplates(mapQuickMessageTemplatesToForm([], { seedDefaults: true }));
+      }
+
+      try {
+        const planTemplatesRes = await coachAPI.getPlanTemplates();
+        setPlanTemplateProfiles(Array.isArray(planTemplatesRes.profiles) ? planTemplatesRes.profiles : []);
+      } catch {
+        setPlanTemplateProfiles([]);
       }
 
       try {
@@ -1240,6 +1376,135 @@ export default function CoachClientPlansModal({ visible, clientId, onClose, onSa
     }
   };
 
+  const persistClientTypeIfNeeded = async typeLabel => {
+    const normalizedType = normalizeClientTypeLabel(typeLabel);
+    const savedType = normalizeClientTypeLabel(client?.clientType);
+
+    if (!clientId || !normalizedType || normalizedType === savedType) {
+      return client;
+    }
+
+    const result = await coachAPI.updateClient(clientId, { clientType: normalizedType });
+    setClient(result.client || null);
+    setAccountForm(current => ({
+      ...current,
+      clientType: result.client?.clientType || normalizedType,
+    }));
+
+    return result.client || client;
+  };
+
+  const handleSavePlanTemplate = async kind => {
+    const typeLabel = normalizeClientTypeLabel(accountForm.clientType);
+
+    if (!typeLabel) {
+      Alert.alert('חסר סוג לקוחה', 'כדי לשמור תבנית צריך להגדיר קודם סוג לקוחה בטאב החשבון.');
+      return;
+    }
+
+    if (kind === 'nutrition') {
+      const validationMessage = validateNutrition(nutritionForm);
+      if (validationMessage) {
+        Alert.alert('שגיאה', validationMessage);
+        return;
+      }
+
+      if (!hasNutritionTemplateContent(nutritionForm)) {
+        Alert.alert('חסר תוכן', 'עדיין אין מספיק תוכן בתוכנית התזונה כדי לשמור אותה כתבנית.');
+        return;
+      }
+    }
+
+    if (kind === 'workout') {
+      const validationMessage = validateWorkout(workoutForm);
+      if (validationMessage) {
+        Alert.alert('שגיאה', validationMessage);
+        return;
+      }
+
+      if (!hasWorkoutTemplateContent(workoutForm)) {
+        Alert.alert('חסר תוכן', 'עדיין אין מספיק תוכן בתוכנית האימון כדי לשמור אותה כתבנית.');
+        return;
+      }
+    }
+
+    setPlanTemplateBusyKey(`${kind}-save`);
+    try {
+      await persistClientTypeIfNeeded(typeLabel);
+
+      const nextProfiles = upsertPlanTemplateProfile(planTemplateProfiles, typeLabel, {
+        nutritionTemplate:
+          kind === 'nutrition'
+            ? serializeNutrition(nutritionForm)
+            : activePlanTemplateProfile?.nutritionTemplate || null,
+        workoutTemplate:
+          kind === 'workout'
+            ? serializeWorkout(workoutForm)
+            : activePlanTemplateProfile?.workoutTemplate || null,
+        updatedAt: new Date().toISOString(),
+      });
+
+      const result = await coachAPI.updatePlanTemplates(nextProfiles);
+      setPlanTemplateProfiles(Array.isArray(result.profiles) ? result.profiles : []);
+      Alert.alert(
+        '✅ נשמר',
+        kind === 'nutrition'
+          ? `תבנית התזונה נשמרה עבור סוג הלקוחה ${typeLabel}`
+          : `תבנית האימון נשמרה עבור סוג הלקוחה ${typeLabel}`
+      );
+    } catch (err) {
+      Alert.alert('שגיאה', err.message || 'לא ניתן לשמור את התבנית כרגע');
+    } finally {
+      setPlanTemplateBusyKey('');
+    }
+  };
+
+  const handleApplyPlanTemplate = async kind => {
+    const typeLabel = normalizeClientTypeLabel(accountForm.clientType);
+    const template =
+      kind === 'nutrition'
+        ? activePlanTemplateProfile?.nutritionTemplate
+        : activePlanTemplateProfile?.workoutTemplate;
+
+    if (!typeLabel) {
+      Alert.alert('חסר סוג לקוחה', 'כדי להחיל תבנית צריך להגדיר קודם סוג לקוחה בטאב החשבון.');
+      return;
+    }
+
+    if (!template) {
+      Alert.alert(
+        'אין תבנית שמורה',
+        kind === 'nutrition'
+          ? `עדיין לא נשמרה תבנית תזונה עבור סוג הלקוחה ${typeLabel}`
+          : `עדיין לא נשמרה תבנית אימון עבור סוג הלקוחה ${typeLabel}`
+      );
+      return;
+    }
+
+    setPlanTemplateBusyKey(`${kind}-apply`);
+    try {
+      await persistClientTypeIfNeeded(typeLabel);
+
+      if (kind === 'nutrition') {
+        const result = await coachAPI.updateClientNutritionPlan(clientId, template);
+        setNutritionForm(mapNutritionToForm(result.nutritionPlan));
+        Alert.alert('✅ הוחל', `תבנית התזונה של ${typeLabel} הוחלה ונשמרה ללקוחה.`);
+      }
+
+      if (kind === 'workout') {
+        const result = await coachAPI.updateClientWorkoutPlan(clientId, template);
+        setWorkoutForm(mapWorkoutToForm(result.workoutPlan));
+        Alert.alert('✅ הוחל', `תבנית האימון של ${typeLabel} הוחלה ונשמרה ללקוחה.`);
+      }
+
+      if (onSaved) onSaved();
+    } catch (err) {
+      Alert.alert('שגיאה', err.message || 'לא ניתן להחיל את התבנית כרגע');
+    } finally {
+      setPlanTemplateBusyKey('');
+    }
+  };
+
   const updateWorkoutField = (field, value) => {
     setWorkoutForm(current => ({ ...current, [field]: value }));
   };
@@ -1461,6 +1726,125 @@ export default function CoachClientPlansModal({ visible, clientId, onClose, onSa
     }
   };
 
+  const renderPlanTemplateSection = kind => {
+    const isNutrition = kind === 'nutrition';
+    const template = isNutrition
+      ? activePlanTemplateProfile?.nutritionTemplate
+      : activePlanTemplateProfile?.workoutTemplate;
+    const hasTemplate = Boolean(template);
+    const busySave = planTemplateBusyKey === `${kind}-save`;
+    const busyApply = planTemplateBusyKey === `${kind}-apply`;
+    const savedClientType = normalizeClientTypeLabel(client?.clientType);
+
+    return (
+      <SectionCard
+        title={isNutrition ? 'תבנית תזונה לפי סוג לקוחה' : 'תבנית אימון לפי סוג לקוחה'}
+        subtitle="שמרי פעם אחת סוג לקוחה והחילי אותו בלחיצה על לקוחות דומות"
+        icon="layers-outline"
+      >
+        <View style={styles.summaryChipsRow}>
+          <SummaryChip label="סוג לקוחה" value={currentClientType || 'לא הוגדר'} color={COLORS.primary} />
+          <SummaryChip
+            label={isNutrition ? 'תבנית תזונה' : 'תבנית אימון'}
+            value={hasTemplate ? 'שמורה' : 'חסרה'}
+            color={hasTemplate ? COLORS.success : COLORS.warning}
+          />
+          <SummaryChip
+            label="עודכן"
+            value={hasTemplate ? formatPlanTemplateDate(activePlanTemplateProfile?.updatedAt) : '—'}
+            color={COLORS.info}
+          />
+        </View>
+
+        {!currentClientType ? (
+          <Text style={styles.emptyStateText}>
+            כדי לעבוד עם תבניות לפי סוג לקוחה, עברי קודם לטאב החשבון והגדירי סוג לקוחה.
+          </Text>
+        ) : (
+          <>
+            <View style={styles.templateSummaryBox}>
+              <Text style={styles.templateSummaryLabel}>
+                {hasTemplate ? 'מה שמור כרגע לסוג הזה' : 'עדיין אין תבנית שמורה לסוג הזה'}
+              </Text>
+              <Text
+                style={[
+                  styles.templateSummaryText,
+                  !hasTemplate && styles.templateSummaryTextMuted,
+                ]}
+              >
+                {isNutrition
+                  ? getNutritionTemplateSummary(template)
+                  : getWorkoutTemplateSummary(template)}
+              </Text>
+              {activePlanTemplateProfile ? (
+                <Text style={styles.templateSummaryMeta}>
+                  לסוג הזה {activePlanTemplateProfile.nutritionTemplate ? 'יש' : 'אין'} גם תבנית
+                  תזונה ו-{activePlanTemplateProfile.workoutTemplate ? 'יש' : 'אין'} גם תבנית
+                  אימון.
+                </Text>
+              ) : null}
+            </View>
+
+            {savedClientType !== currentClientType ? (
+              <Text style={styles.helperText}>
+                הסוג החדש יישמר ללקוחה אוטומטית בפעולת שמירה או החלה של תבנית.
+              </Text>
+            ) : null}
+
+            <View style={styles.templateActionRow}>
+              <TouchableOpacity
+                style={[
+                  styles.templateActionBtn,
+                  styles.templateActionPrimaryBtn,
+                  (!hasTemplate || busySave || busyApply) && styles.templateActionBtnDisabled,
+                ]}
+                onPress={() => handleApplyPlanTemplate(kind)}
+                disabled={!hasTemplate || busySave || busyApply}
+              >
+                {busyApply ? (
+                  <ActivityIndicator color={COLORS.white} />
+                ) : (
+                  <>
+                    <Ionicons name="flash-outline" size={16} color={COLORS.white} />
+                    <Text style={[styles.templateActionBtnText, styles.templateActionPrimaryBtnText]}>
+                      החילי על הלקוחה
+                    </Text>
+                  </>
+                )}
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[
+                  styles.templateActionBtn,
+                  styles.templateActionSecondaryBtn,
+                  (busySave || busyApply) && styles.templateActionBtnDisabled,
+                ]}
+                onPress={() => handleSavePlanTemplate(kind)}
+                disabled={busySave || busyApply}
+              >
+                {busySave ? (
+                  <ActivityIndicator color={COLORS.primary} />
+                ) : (
+                  <>
+                    <Ionicons name="save-outline" size={16} color={COLORS.primary} />
+                    <Text
+                      style={[
+                        styles.templateActionBtnText,
+                        styles.templateActionSecondaryBtnText,
+                      ]}
+                    >
+                      {isNutrition ? 'שמרי כתבנית תזונה' : 'שמרי כתבנית אימון'}
+                    </Text>
+                  </>
+                )}
+              </TouchableOpacity>
+            </View>
+          </>
+        )}
+      </SectionCard>
+    );
+  };
+
   const renderGoalsTab = () => (
     <>
       <SectionCard
@@ -1627,6 +2011,17 @@ export default function CoachClientPlansModal({ visible, clientId, onClose, onSa
         />
 
         <Field
+          label="סוג לקוחה לתבניות"
+          value={accountForm.clientType}
+          onChangeText={value => updateAccountField('clientType', value)}
+          placeholder="למשל: חיטוב התחלתי / חזרה לשגרה / מסה נקייה"
+        />
+
+        <Text style={styles.helperText}>
+          זה הסיווג שלפיו אפשר לשמור ולהחיל תבניות תזונה ואימון על לקוחות דומות.
+        </Text>
+
+        <Field
           label="הערות פרופיל"
           value={accountForm.notes}
           onChangeText={value => updateAccountField('notes', value)}
@@ -1791,8 +2186,8 @@ export default function CoachClientPlansModal({ visible, clientId, onClose, onSa
               <TouchableOpacity
                 style={[
                   styles.automationReminderBtn,
-                  (!automationStatus.reminder?.shouldSendNow || sendingAutomationReminder)
-                    && styles.automationReminderBtnDisabled,
+                  (!automationStatus.reminder?.shouldSendNow || sendingAutomationReminder) &&
+                    styles.automationReminderBtnDisabled,
                 ]}
                 onPress={handleSendAutomationReminder}
                 disabled={!automationStatus.reminder?.shouldSendNow || sendingAutomationReminder}
@@ -1834,11 +2229,7 @@ export default function CoachClientPlansModal({ visible, clientId, onClose, onSa
         </Text>
 
         <View style={styles.summaryChipsRow}>
-          <SummaryChip
-            label="תבניות"
-            value={quickMessageTemplates.length}
-            color={COLORS.primary}
-          />
+          <SummaryChip label="תבניות" value={quickMessageTemplates.length} color={COLORS.primary} />
           <SummaryChip label="שליחה ל" value={getClientFirstName(client)} color={COLORS.info} />
         </View>
 
@@ -1868,14 +2259,18 @@ export default function CoachClientPlansModal({ visible, clientId, onClose, onSa
                 <Field
                   label="שם פנימי"
                   value={template.title}
-                  onChangeText={value => updateQuickMessageTemplateField(template.id, 'title', value)}
+                  onChangeText={value =>
+                    updateQuickMessageTemplateField(template.id, 'title', value)
+                  }
                   placeholder="למשל: בדיקת דופק / חיזוק / צ׳ק-אין"
                 />
 
                 <Field
                   label="נוסח ההודעה"
                   value={template.text}
-                  onChangeText={value => updateQuickMessageTemplateField(template.id, 'text', value)}
+                  onChangeText={value =>
+                    updateQuickMessageTemplateField(template.id, 'text', value)
+                  }
                   placeholder="היי {{firstName}}, ..."
                   multiline
                 />
@@ -1895,8 +2290,8 @@ export default function CoachClientPlansModal({ visible, clientId, onClose, onSa
                 <TouchableOpacity
                   style={[
                     styles.quickMessageSendBtn,
-                    (!template.text.trim() || sendingQuickMessageId === template.id)
-                      && styles.quickMessageSendBtnDisabled,
+                    (!template.text.trim() || sendingQuickMessageId === template.id) &&
+                      styles.quickMessageSendBtnDisabled,
                   ]}
                   onPress={() => handleSendQuickMessageTemplate(template.id)}
                   disabled={!template.text.trim() || sendingQuickMessageId === template.id}
@@ -2066,6 +2461,8 @@ export default function CoachClientPlansModal({ visible, clientId, onClose, onSa
           </>
         )}
       </SectionCard>
+
+      {renderPlanTemplateSection('nutrition')}
 
       <View style={styles.accountInfoBox}>
         <Ionicons name="information-circle-outline" size={18} color={COLORS.info} />
@@ -2528,6 +2925,8 @@ export default function CoachClientPlansModal({ visible, clientId, onClose, onSa
 
   const renderWorkoutTab = () => (
     <>
+      {renderPlanTemplateSection('workout')}
+
       <SectionCard
         title="פרטי תוכנית אימון"
         subtitle="מטרת התוכנית והדגשים המרכזיים"
@@ -2776,10 +3175,7 @@ export default function CoachClientPlansModal({ visible, clientId, onClose, onSa
             habitForm.map((habit, habitIndex) => (
               <View key={habit.id} style={styles.innerCard}>
                 <View style={styles.nestedCardHeader}>
-                  <TouchableOpacity
-                    onPress={() => removeHabit(habit.id)}
-                    style={styles.removeBtn}
-                  >
+                  <TouchableOpacity onPress={() => removeHabit(habit.id)} style={styles.removeBtn}>
                     <Ionicons name="trash-outline" size={16} color={COLORS.danger} />
                     <Text style={styles.removeBtnText}>הסרה</Text>
                   </TouchableOpacity>
@@ -3060,7 +3456,11 @@ export default function CoachClientPlansModal({ visible, clientId, onClose, onSa
           ) : (
             <>
               <View style={styles.summaryChipsRow}>
-                <SummaryChip label="שבוע" value={latestCheckInEntry.weekKey} color={COLORS.primary} />
+                <SummaryChip
+                  label="שבוע"
+                  value={latestCheckInEntry.weekKey}
+                  color={COLORS.primary}
+                />
                 <SummaryChip
                   label="תשובות"
                   value={latestCheckInEntry.answers?.length || 0}
@@ -3096,6 +3496,7 @@ export default function CoachClientPlansModal({ visible, clientId, onClose, onSa
     if (activeTab === 'account') return 'שמרי חשבון';
     if (activeTab === 'goals') return 'שמרי יעדים';
     if (activeTab === 'nutrition') return 'שמרי תזונה';
+    if (activeTab === 'workout') return 'שמרי אימון';
     if (activeTab === 'habits') return 'שמרי הרגלים';
     if (activeTab === 'checkin') return 'שמרי צ׳ק-אין';
     return 'שמרי תוכנית';
@@ -3437,6 +3838,73 @@ const styles = StyleSheet.create({
     color: COLORS.white,
     fontSize: 13,
     fontWeight: '700',
+  },
+  templateActionBtn: {
+    alignItems: 'center',
+    borderRadius: 12,
+    borderWidth: 1,
+    flex: 1,
+    flexDirection: 'row-reverse',
+    gap: 8,
+    justifyContent: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+  },
+  templateActionBtnDisabled: {
+    opacity: 0.6,
+  },
+  templateActionBtnText: {
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  templateActionPrimaryBtn: {
+    backgroundColor: COLORS.primary,
+    borderColor: COLORS.primary,
+  },
+  templateActionPrimaryBtnText: {
+    color: COLORS.white,
+  },
+  templateActionRow: {
+    flexDirection: 'row-reverse',
+    gap: 10,
+    marginTop: 12,
+  },
+  templateActionSecondaryBtn: {
+    backgroundColor: COLORS.inputBg,
+    borderColor: COLORS.primary,
+  },
+  templateActionSecondaryBtnText: {
+    color: COLORS.primary,
+  },
+  templateSummaryBox: {
+    backgroundColor: COLORS.card,
+    borderColor: COLORS.border,
+    borderRadius: 12,
+    borderWidth: 1,
+    marginTop: 12,
+    padding: 12,
+  },
+  templateSummaryLabel: {
+    color: COLORS.textSecondary,
+    fontSize: 11,
+    marginBottom: 6,
+    textAlign: 'right',
+  },
+  templateSummaryMeta: {
+    color: COLORS.textMuted,
+    fontSize: 11,
+    lineHeight: 17,
+    marginTop: 8,
+    textAlign: 'right',
+  },
+  templateSummaryText: {
+    color: COLORS.white,
+    fontSize: 12,
+    lineHeight: 19,
+    textAlign: 'right',
+  },
+  templateSummaryTextMuted: {
+    color: COLORS.textMuted,
   },
   cancelBtn: {
     alignItems: 'center',

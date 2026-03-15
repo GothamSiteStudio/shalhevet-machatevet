@@ -164,8 +164,9 @@ export const coachAPI = {
 
   // הודעות
   getMessageTemplates: () => apiRequest('GET', '/coach/message-templates'),
-  updateMessageTemplates: templates =>
-    apiRequest('PUT', '/coach/message-templates', { templates }),
+  updateMessageTemplates: templates => apiRequest('PUT', '/coach/message-templates', { templates }),
+  getPlanTemplates: () => apiRequest('GET', '/coach/plan-templates'),
+  updatePlanTemplates: profiles => apiRequest('PUT', '/coach/plan-templates', { profiles }),
   getMessages: () => apiRequest('GET', '/coach/messages'),
   sendMessage: (userId, text) => apiRequest('POST', `/coach/messages/${userId}`, { text }),
 
