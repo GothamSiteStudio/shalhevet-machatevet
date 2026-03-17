@@ -553,7 +553,7 @@ function CoachMealEditorModal({ visible, onClose, onSaved, editMeal }) {
           <Text style={styles.modalTitle}>{isEditing ? 'עריכת ארוחה' : 'ארוחה חדשה למאגר'}</Text>
           <Text style={styles.modalSub}>הארוחה תישמר במאגר ותוכלי להוסיף אותה ללקוחות</Text>
 
-          <ScrollView showsVerticalScrollIndicator={false}>
+          <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
             <View style={{ marginBottom: 12 }}>
               <Text style={styles.fieldLabel}>שם הארוחה *</Text>
               <TextInput
@@ -571,6 +571,7 @@ function CoachMealEditorModal({ visible, onClose, onSaved, editMeal }) {
               <ScrollView
                 horizontal
                 showsHorizontalScrollIndicator={false}
+                nestedScrollEnabled
                 style={{ marginBottom: 4 }}
               >
                 <View style={{ flexDirection: 'row-reverse', gap: 6 }}>
@@ -1106,6 +1107,7 @@ export default function CoachDashboardScreen() {
 
         <ScrollView
           showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
           keyboardDismissMode={KEYBOARD_DISMISS_MODE}
           refreshControl={
             <RefreshControl
@@ -1224,6 +1226,7 @@ export default function CoachDashboardScreen() {
               <ScrollView
                 horizontal
                 showsHorizontalScrollIndicator={false}
+                nestedScrollEnabled
                 style={styles.clientFiltersScroll}
               >
                 <View style={styles.clientFiltersRow}>
@@ -1255,6 +1258,7 @@ export default function CoachDashboardScreen() {
                   <ScrollView
                     horizontal
                     showsHorizontalScrollIndicator={false}
+                    nestedScrollEnabled
                     style={styles.clientFiltersScroll}
                   >
                     <View style={styles.clientFiltersRow}>
@@ -1288,6 +1292,7 @@ export default function CoachDashboardScreen() {
                   <ScrollView
                     horizontal
                     showsHorizontalScrollIndicator={false}
+                    nestedScrollEnabled
                     style={styles.clientFiltersScroll}
                   >
                     <View style={styles.clientFiltersRow}>
@@ -1385,6 +1390,7 @@ export default function CoachDashboardScreen() {
               <ScrollView
                 horizontal
                 showsHorizontalScrollIndicator={false}
+                nestedScrollEnabled
                 style={{ marginBottom: 12 }}
               >
                 <View style={{ flexDirection: 'row-reverse', gap: 6 }}>

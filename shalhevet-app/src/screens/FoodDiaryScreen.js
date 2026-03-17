@@ -750,7 +750,7 @@ export default function FoodDiaryScreen({ navigation }) {
 
   return (
     <SafeAreaView style={styles.safe}>
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.container}>
+      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
         {/* Header */}
         <View style={styles.header}>
           <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
@@ -1048,6 +1048,8 @@ const styles = StyleSheet.create({
     maxHeight: '85%',
     borderTopWidth: 1,
     borderColor: COLORS.border,
+    flex: 0,
+    flexShrink: 1,
   },
   modalHandle: {
     width: 40,
@@ -1162,7 +1164,7 @@ const styles = StyleSheet.create({
   },
 
   // Food List
-  foodList: { maxHeight: 350 },
+  foodList: { flex: 1, minHeight: 120 },
   foodItem: {
     flexDirection: 'row-reverse',
     alignItems: 'center',

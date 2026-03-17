@@ -3933,6 +3933,7 @@ export default function CoachClientPlansModal({ visible, clientId, onClose, onSa
                 style={styles.contentScroll}
                 contentContainerStyle={styles.contentContainer}
                 showsVerticalScrollIndicator={false}
+                keyboardShouldPersistTaps="handled"
                 keyboardDismissMode={KEYBOARD_DISMISS_MODE}
               >
                 {activeTab === 'account' ? renderAccountTab() : null}
@@ -4290,7 +4291,8 @@ const styles = StyleSheet.create({
     paddingBottom: 12,
   },
   contentScroll: {
-    flexGrow: 0,
+    flexGrow: 1,
+    flexShrink: 1,
   },
   editorSheet: {
     backgroundColor: COLORS.card,

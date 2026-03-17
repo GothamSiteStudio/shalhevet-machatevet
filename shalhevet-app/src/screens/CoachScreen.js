@@ -60,6 +60,7 @@ function MeetingRequestModal({ visible, onClose, onSubmit, saving }) {
             <ScrollView
               showsVerticalScrollIndicator={false}
               contentContainerStyle={{ paddingBottom: 8 }}
+              keyboardShouldPersistTaps="handled"
             >
               <Text style={styles.inputLabel}>תאריך מבוקש</Text>
               <TextInput
@@ -259,7 +260,7 @@ function CheckInModal({ visible, onClose, template, entry, saving, onSubmit }) {
             <Text style={styles.modalTitle}>{template?.title || 'צ׳ק-אין שבועי'}</Text>
             <Text style={styles.modalSub}>{template?.intro || 'מלאי את הטופס ושלחי עדכון מסודר למאמנת.'}</Text>
 
-            <ScrollView showsVerticalScrollIndicator={false}>
+            <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
               {(template?.questions || []).map(question => {
                 const answer = draft.answers.find(item => item.questionId === question.id);
 
