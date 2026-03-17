@@ -5,6 +5,8 @@ export const TYPOGRAPHY = {
     regular: 'Heebo_400Regular',
     medium: 'Heebo_500Medium',
     bold: 'Heebo_700Bold',
+    extraBold: 'Heebo_800ExtraBold',
+    black: 'Heebo_900Black',
   },
   sizes: {
     xs: 12, // כיתוב קטן מאוד (תאריכים/סטטוס)
@@ -37,6 +39,8 @@ function normalizeFontWeight(weight) {
 export function getFontFamilyForWeight(weight) {
   const normalizedWeight = normalizeFontWeight(weight);
 
+  if (normalizedWeight >= 900) return TYPOGRAPHY.fontFamily.black;
+  if (normalizedWeight >= 800) return TYPOGRAPHY.fontFamily.extraBold;
   if (normalizedWeight >= 700) return TYPOGRAPHY.fontFamily.bold;
   if (normalizedWeight >= 500) return TYPOGRAPHY.fontFamily.medium;
   return TYPOGRAPHY.fontFamily.regular;

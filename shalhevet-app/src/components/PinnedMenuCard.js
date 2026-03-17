@@ -1,16 +1,19 @@
 import React from 'react';
-import { Image, StyleSheet, Text, View } from 'react-native';
+import { Image, ImageBackground, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../theme/colors';
 import { hasPinnedMenuContent, normalizePinnedMenu } from '../utils/pinnedMenu';
 
-const menuTemplateImage = require('../../shalhevet menu template.jpeg');
+const menuTemplateImage = require('../../assets/pinned-menu-template.png');
 const resolvedMenuTemplate = Image.resolveAssetSource(menuTemplateImage);
+const DEFAULT_TEMPLATE_ASPECT_RATIO = 1080 / 1920;
+const MENU_TEXT_FONT_FAMILY = 'Rubik_800ExtraBold';
+const MENU_TITLE_FONT_FAMILY = 'Rubik_900Black';
 
 export const PINNED_MENU_TEMPLATE_ASPECT_RATIO =
   resolvedMenuTemplate?.width && resolvedMenuTemplate?.height
     ? resolvedMenuTemplate.width / resolvedMenuTemplate.height
-    : 0.72;
+    : DEFAULT_TEMPLATE_ASPECT_RATIO;
 
 function formatUpdatedAt(value) {
   const dateValue = String(value || '').split('T')[0];
@@ -21,79 +24,96 @@ export default function PinnedMenuCard({
   menu,
   compact = false,
   caption = 'תפריט נעוץ',
-  backgroundResizeMode = 'contain',
-  displayHeight = null,
+  displayHeight,
 }) {
   const normalizedMenu = normalizePinnedMenu(menu);
   const updatedAt = formatUpdatedAt(normalizedMenu.updatedAt);
   const isDenseContent = normalizedMenu.bodyText.length > (compact ? 220 : 320);
+  const hasDisplayHeight = Number.isFinite(displayHeight) && displayHeight > 0;
+  const displayWidth = hasDisplayHeight
+    ? Math.round(displayHeight * PINNED_MENU_TEMPLATE_ASPECT_RATIO)
+    : null;
 
   if (!hasPinnedMenuContent(normalizedMenu)) {
     return null;
   }
 
-  return (
-    <View
-      style={[
-        styles.card,
-        compact && styles.cardCompact,
-        displayHeight ? styles.cardFixedHeight : styles.cardAutoHeight,
-        displayHeight ? { height: displayHeight, aspectRatio: PINNED_MENU_TEMPLATE_ASPECT_RATIO } : null,
-      ]}
-    >
-      <Image
+  const cardChildren = (
+    <>
+      <ImageBackground
         source={menuTemplateImage}
         style={styles.backgroundImage}
-        resizeMode={displayHeight ? backgroundResizeMode : 'cover'}
-      />
-      <View style={styles.overlay} />
-
-      <View
-        style={[
-          styles.content,
-          compact && styles.contentCompact,
-          isDenseContent && styles.contentDense,
-        ]}
+        imageStyle={styles.backgroundImageAsset}
+        resizeMode="stretch"
       >
-        <View style={styles.topRow}>
-          <View style={styles.badge}>
-            <Ionicons name="pin-outline" size={12} color={COLORS.white} />
-            <Text style={styles.badgeText}>{caption}</Text>
-          </View>
-          {updatedAt ? <Text style={styles.updatedAt}>עודכן {updatedAt}</Text> : <View />}
-        </View>
+        <View style={styles.overlay} />
 
-        {normalizedMenu.periodLabel ? (
+        <View
+          style={[
+            styles.content,
+            compact && styles.contentCompact,
+            isDenseContent && styles.contentDense,
+          ]}
+        >
+          <View style={styles.topRow}>
+            <View style={styles.badge}>
+              <Ionicons name="pin-outline" size={12} color={COLORS.white} />
+              <Text style={styles.badgeText}>{caption}</Text>
+            </View>
+            {updatedAt ? <Text style={styles.updatedAt}>עודכן {updatedAt}</Text> : <View />}
+          </View>
+
+          {normalizedMenu.periodLabel ? (
+            <Text
+              style={[
+                styles.periodLabel,
+                compact && styles.periodLabelCompact,
+                isDenseContent && styles.periodLabelDense,
+              ]}
+            >
+              {normalizedMenu.periodLabel}
+            </Text>
+          ) : null}
+
           <Text
             style={[
-              styles.periodLabel,
-              compact && styles.periodLabelCompact,
-              isDenseContent && styles.periodLabelDense,
+              styles.title,
+              compact && styles.titleCompact,
+              isDenseContent && styles.titleDense,
             ]}
           >
-            {normalizedMenu.periodLabel}
+            {normalizedMenu.title || 'תפריט אישי'}
           </Text>
-        ) : null}
 
-        <Text
-          style={[
-            styles.title,
-            compact && styles.titleCompact,
-            isDenseContent && styles.titleDense,
-          ]}
-        >
-          {normalizedMenu.title || 'תפריט אישי'}
-        </Text>
+          <Text
+            style={[
+              styles.bodyText,
+              compact && styles.bodyTextCompact,
+              isDenseContent && styles.bodyTextDense,
+            ]}
+          >
+            {normalizedMenu.bodyText}
+          </Text>
+        </View>
+      </ImageBackground>
+    </>
+  );
 
-        <Text
-          style={[
-            styles.bodyText,
-            compact && styles.bodyTextCompact,
-            isDenseContent && styles.bodyTextDense,
-          ]}
-        >
-          {normalizedMenu.bodyText}
-        </Text>
+  if (!hasDisplayHeight) {
+    return <View style={[styles.card, compact && styles.cardCompact]}>{cardChildren}</View>;
+  }
+
+  return (
+    <View style={styles.displayFrame}>
+      <View
+        style={[
+          styles.card,
+          styles.cardFixedSize,
+          compact && styles.cardCompact,
+          { height: displayHeight, width: displayWidth },
+        ]}
+      >
+        {cardChildren}
       </View>
     </View>
   );
@@ -102,6 +122,8 @@ export default function PinnedMenuCard({
 const styles = StyleSheet.create({
   backgroundImage: {
     ...StyleSheet.absoluteFillObject,
+  },
+  backgroundImageAsset: {
     opacity: 0.98,
   },
   badge: {
@@ -117,18 +139,22 @@ const styles = StyleSheet.create({
   },
   badgeText: {
     color: COLORS.white,
+    fontFamily: MENU_TEXT_FONT_FAMILY,
     fontSize: 11,
-    fontWeight: '700',
+    textShadowColor: 'rgba(0, 0, 0, 0.55)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 3,
   },
   bodyText: {
     color: COLORS.white,
+    fontFamily: MENU_TEXT_FONT_FAMILY,
     fontSize: 18,
-    fontWeight: '800',
+    letterSpacing: -0.2,
     lineHeight: 30,
     textAlign: 'center',
-    textShadowColor: 'rgba(0, 0, 0, 0.4)',
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 6,
+    textShadowColor: 'rgba(0, 0, 0, 0.72)',
+    textShadowOffset: { width: 0, height: 2 },
+    textShadowRadius: 10,
   },
   bodyTextCompact: {
     fontSize: 15,
@@ -139,21 +165,21 @@ const styles = StyleSheet.create({
     lineHeight: 22,
   },
   card: {
+    aspectRatio: PINNED_MENU_TEMPLATE_ASPECT_RATIO,
     backgroundColor: '#000000',
     borderColor: 'rgba(255, 255, 255, 0.08)',
     borderRadius: 24,
     borderWidth: 1,
     overflow: 'hidden',
     position: 'relative',
+    width: '100%',
   },
   cardCompact: {
     borderRadius: 22,
   },
-  cardFixedHeight: {
+  cardFixedSize: {
     alignSelf: 'center',
-  },
-  cardAutoHeight: {
-    width: '100%',
+    maxWidth: '100%',
   },
   content: {
     flex: 1,
@@ -172,16 +198,25 @@ const styles = StyleSheet.create({
     paddingHorizontal: 18,
     paddingTop: 16,
   },
+  displayFrame: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: '100%',
+  },
   overlay: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: 'rgba(0, 0, 0, 0.28)',
   },
   periodLabel: {
     color: 'rgba(255, 255, 255, 0.88)',
+    fontFamily: MENU_TEXT_FONT_FAMILY,
     fontSize: 20,
-    fontWeight: '800',
+    letterSpacing: -0.2,
     marginBottom: 10,
     textAlign: 'center',
+    textShadowColor: 'rgba(0, 0, 0, 0.68)',
+    textShadowOffset: { width: 0, height: 2 },
+    textShadowRadius: 8,
   },
   periodLabelCompact: {
     fontSize: 17,
@@ -193,14 +228,15 @@ const styles = StyleSheet.create({
   },
   title: {
     color: COLORS.white,
+    fontFamily: MENU_TITLE_FONT_FAMILY,
     fontSize: 34,
-    fontWeight: '900',
+    letterSpacing: -0.4,
     lineHeight: 40,
     marginBottom: 20,
     textAlign: 'center',
-    textShadowColor: 'rgba(0, 0, 0, 0.4)',
+    textShadowColor: 'rgba(0, 0, 0, 0.76)',
     textShadowOffset: { width: 0, height: 2 },
-    textShadowRadius: 8,
+    textShadowRadius: 10,
   },
   titleCompact: {
     fontSize: 26,
@@ -221,8 +257,11 @@ const styles = StyleSheet.create({
   },
   updatedAt: {
     color: 'rgba(255, 255, 255, 0.78)',
+    fontFamily: MENU_TEXT_FONT_FAMILY,
     fontSize: 11,
-    fontWeight: '600',
     textAlign: 'right',
+    textShadowColor: 'rgba(0, 0, 0, 0.5)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 3,
   },
 });

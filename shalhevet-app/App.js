@@ -5,7 +5,14 @@ import { NavigationContainer } from '@react-navigation/native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { useFonts } from 'expo-font';
-import { Heebo_400Regular, Heebo_500Medium, Heebo_700Bold } from '@expo-google-fonts/heebo';
+import {
+  Heebo_400Regular,
+  Heebo_500Medium,
+  Heebo_700Bold,
+  Heebo_800ExtraBold,
+  Heebo_900Black,
+} from '@expo-google-fonts/heebo';
+import { Rubik_800ExtraBold, Rubik_900Black } from '@expo-google-fonts/rubik';
 import { I18nManager, StyleSheet, View } from 'react-native';
 import AppNavigator from './src/navigation/AppNavigator';
 
@@ -20,6 +27,10 @@ export default function App() {
     Heebo_400Regular,
     Heebo_500Medium,
     Heebo_700Bold,
+    Heebo_800ExtraBold,
+    Heebo_900Black,
+    Rubik_800ExtraBold,
+    Rubik_900Black,
   });
 
   if (!fontsLoaded && !fontError) {
