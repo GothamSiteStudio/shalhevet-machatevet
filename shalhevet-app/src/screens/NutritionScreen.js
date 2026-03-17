@@ -387,8 +387,6 @@ export default function NutritionScreen({ navigation }) {
             <PinnedMenuCard
               menu={nutritionPlan.pinnedMenu}
               caption="התפריט הנעוץ שלך"
-              compact
-              displayHeight={560}
             />
           </View>
         ) : null}

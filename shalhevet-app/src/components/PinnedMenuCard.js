@@ -37,14 +37,14 @@ export default function PinnedMenuCard({
       style={[
         styles.card,
         compact && styles.cardCompact,
-        displayHeight ? styles.cardFixedHeight : styles.cardFullWidth,
-        displayHeight ? { height: displayHeight } : null,
+        displayHeight ? styles.cardFixedHeight : styles.cardAutoHeight,
+        displayHeight ? { height: displayHeight, aspectRatio: PINNED_MENU_TEMPLATE_ASPECT_RATIO } : null,
       ]}
     >
       <Image
         source={menuTemplateImage}
         style={styles.backgroundImage}
-        resizeMode={backgroundResizeMode}
+        resizeMode={displayHeight ? backgroundResizeMode : 'cover'}
       />
       <View style={styles.overlay} />
 
@@ -139,7 +139,6 @@ const styles = StyleSheet.create({
     lineHeight: 22,
   },
   card: {
-    aspectRatio: PINNED_MENU_TEMPLATE_ASPECT_RATIO,
     backgroundColor: '#000000',
     borderColor: 'rgba(255, 255, 255, 0.08)',
     borderRadius: 24,
@@ -153,7 +152,7 @@ const styles = StyleSheet.create({
   cardFixedHeight: {
     alignSelf: 'center',
   },
-  cardFullWidth: {
+  cardAutoHeight: {
     width: '100%',
   },
   content: {
