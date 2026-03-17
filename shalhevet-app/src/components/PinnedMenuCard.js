@@ -17,11 +17,7 @@ function formatUpdatedAt(value) {
   return dateValue || '';
 }
 
-export default function PinnedMenuCard({
-  menu,
-  compact = false,
-  caption = 'תפריט נעוץ',
-}) {
+export default function PinnedMenuCard({ menu, compact = false, caption = 'תפריט נעוץ' }) {
   const normalizedMenu = normalizePinnedMenu(menu);
   const updatedAt = formatUpdatedAt(normalizedMenu.updatedAt);
   const isDenseContent = normalizedMenu.bodyText.length > (compact ? 220 : 320);

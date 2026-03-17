@@ -133,7 +133,9 @@ function MenuCard({ item, onPress, index }) {
           >
             <IconComponent name={item.icon} size={32} color={item.color} accessible={false} />
           </View>
-          <Text style={styles.cardLabel} accessible={false}>{item.label}</Text>
+          <Text style={styles.cardLabel} accessible={false}>
+            {item.label}
+          </Text>
         </LinearGradient>
       </TouchableOpacity>
     </FadeInView>
@@ -434,9 +436,7 @@ export default function HomeScreen({ navigation }) {
               <Ionicons name="chevron-back" size={18} color={COLORS.textSecondary} />
               <View style={styles.pinnedMenuHeaderText}>
                 <Text style={styles.pinnedMenuTitle}>נעוץ מהמאמנת</Text>
-                <Text style={styles.pinnedMenuSubtitle}>
-                  התפריט האחרון ששלהבת עדכנה עבורך
-                </Text>
+                <Text style={styles.pinnedMenuSubtitle}>התפריט האחרון ששלהבת עדכנה עבורך</Text>
               </View>
               <View style={styles.pinnedMenuIconWrap}>
                 <Ionicons name="pin" size={18} color={COLORS.primary} />
@@ -460,11 +460,13 @@ export default function HomeScreen({ navigation }) {
             <View style={styles.calorieHeaderText}>
               <Text style={styles.calorieTitle}>מאזן קלוריות להיום</Text>
               <Text style={styles.calorieSubtitle}>
-                {calorieSummary.loading
-                  ? <Skeleton width={180} height={14} borderRadius={4} />
-                  : calorieSummary.hasTarget
-                    ? 'מחושב לפי מה שנרשם ביומן האכילה שלך'
-                    : 'כדי לחשב יתרה צריך יעד קלורי מהמאמנת'}
+                {calorieSummary.loading ? (
+                  <Skeleton width={180} height={14} borderRadius={4} />
+                ) : calorieSummary.hasTarget ? (
+                  'מחושב לפי מה שנרשם ביומן האכילה שלך'
+                ) : (
+                  'כדי לחשב יתרה צריך יעד קלורי מהמאמנת'
+                )}
               </Text>
             </View>
             <View style={styles.calorieIconWrap}>
@@ -517,11 +519,7 @@ export default function HomeScreen({ navigation }) {
         </TouchableOpacity>
 
         {/* Grid */}
-        <View
-          style={styles.grid}
-          accessible={false}
-          importantForAccessibility="no"
-        >
+        <View style={styles.grid} accessible={false} importantForAccessibility="no">
           {MENU_ITEMS.map((item, index) => (
             <MenuCard
               key={item.id}

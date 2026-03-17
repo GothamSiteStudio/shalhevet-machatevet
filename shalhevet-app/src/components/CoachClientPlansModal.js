@@ -216,10 +216,10 @@ function hasNutritionTemplateContent(plan) {
 
   return Boolean(
     plan.title.trim() ||
-      plan.notes.trim() ||
-      plan.meals.length > 0 ||
-      hasPinnedMenuContent(plan.pinnedMenu) ||
-      Object.values(plan.dailyTargets || {}).some(hasMeaningfulValue)
+    plan.notes.trim() ||
+    plan.meals.length > 0 ||
+    hasPinnedMenuContent(plan.pinnedMenu) ||
+    Object.values(plan.dailyTargets || {}).some(hasMeaningfulValue)
   );
 }
 
@@ -228,10 +228,10 @@ function hasWorkoutTemplateContent(plan) {
 
   return Boolean(
     plan.title.trim() ||
-      plan.goalFocus.trim() ||
-      plan.notes.trim() ||
-      plan.days.length > 0 ||
-      Object.values(plan.weeklyTargets || {}).some(hasMeaningfulValue)
+    plan.goalFocus.trim() ||
+    plan.notes.trim() ||
+    plan.days.length > 0 ||
+    Object.values(plan.weeklyTargets || {}).some(hasMeaningfulValue)
   );
 }
 
@@ -243,8 +243,9 @@ function findPlanTemplateProfile(profiles, clientType) {
   }
 
   return (
-    profiles.find(profile => normalizeClientTypeKey(profile?.typeLabel || profile?.typeKey) === typeKey) ||
-    null
+    profiles.find(
+      profile => normalizeClientTypeKey(profile?.typeLabel || profile?.typeKey) === typeKey
+    ) || null
   );
 }
 
@@ -1066,7 +1067,10 @@ export default function CoachClientPlansModal({ visible, clientId, onClose, onSa
   });
 
   const currentClientType = normalizeClientTypeLabel(accountForm.clientType);
-  const activePlanTemplateProfile = findPlanTemplateProfile(planTemplateProfiles, currentClientType);
+  const activePlanTemplateProfile = findPlanTemplateProfile(
+    planTemplateProfiles,
+    currentClientType
+  );
   const pinnedMenuDraft = normalizePinnedMenu(nutritionForm.pinnedMenu);
   const hasPinnedMenuDraft = hasPinnedMenuContent(pinnedMenuDraft);
 
@@ -1106,7 +1110,9 @@ export default function CoachClientPlansModal({ visible, clientId, onClose, onSa
 
       try {
         const planTemplatesRes = await coachAPI.getPlanTemplates();
-        setPlanTemplateProfiles(Array.isArray(planTemplatesRes.profiles) ? planTemplatesRes.profiles : []);
+        setPlanTemplateProfiles(
+          Array.isArray(planTemplatesRes.profiles) ? planTemplatesRes.profiles : []
+        );
       } catch {
         setPlanTemplateProfiles([]);
       }
@@ -1906,7 +1912,11 @@ export default function CoachClientPlansModal({ visible, clientId, onClose, onSa
         icon="layers-outline"
       >
         <View style={styles.summaryChipsRow}>
-          <SummaryChip label="סוג לקוחה" value={currentClientType || 'לא הוגדר'} color={COLORS.primary} />
+          <SummaryChip
+            label="סוג לקוחה"
+            value={currentClientType || 'לא הוגדר'}
+            color={COLORS.primary}
+          />
           <SummaryChip
             label={isNutrition ? 'תבנית תזונה' : 'תבנית אימון'}
             value={hasTemplate ? 'שמורה' : 'חסרה'}
@@ -1942,8 +1952,7 @@ export default function CoachClientPlansModal({ visible, clientId, onClose, onSa
               {activePlanTemplateProfile ? (
                 <Text style={styles.templateSummaryMeta}>
                   לסוג הזה {activePlanTemplateProfile.nutritionTemplate ? 'יש' : 'אין'} גם תבנית
-                  תזונה ו-{activePlanTemplateProfile.workoutTemplate ? 'יש' : 'אין'} גם תבנית
-                  אימון.
+                  תזונה ו-{activePlanTemplateProfile.workoutTemplate ? 'יש' : 'אין'} גם תבנית אימון.
                 </Text>
               ) : null}
             </View>
@@ -1969,7 +1978,9 @@ export default function CoachClientPlansModal({ visible, clientId, onClose, onSa
                 ) : (
                   <>
                     <Ionicons name="flash-outline" size={16} color={COLORS.white} />
-                    <Text style={[styles.templateActionBtnText, styles.templateActionPrimaryBtnText]}>
+                    <Text
+                      style={[styles.templateActionBtnText, styles.templateActionPrimaryBtnText]}
+                    >
                       החילי על הלקוחה
                     </Text>
                   </>
@@ -1991,10 +2002,7 @@ export default function CoachClientPlansModal({ visible, clientId, onClose, onSa
                   <>
                     <Ionicons name="save-outline" size={16} color={COLORS.primary} />
                     <Text
-                      style={[
-                        styles.templateActionBtnText,
-                        styles.templateActionSecondaryBtnText,
-                      ]}
+                      style={[styles.templateActionBtnText, styles.templateActionSecondaryBtnText]}
                     >
                       {isNutrition ? 'שמרי כתבנית תזונה' : 'שמרי כתבנית אימון'}
                     </Text>
@@ -2630,9 +2638,9 @@ export default function CoachClientPlansModal({ visible, clientId, onClose, onSa
       <View style={styles.accountInfoBox}>
         <Ionicons name="information-circle-outline" size={18} color={COLORS.info} />
         <Text style={styles.accountInfoText}>
-          כדי לעדכן תזונה ללקוחה: הוסיפי ארוחות מהמאגר שלך או מספריית המתכונים, ערכי לפי הצורך,
-          צרי גם תפריט נעוץ אם צריך, ואז לחצי על שמרי תזונה. אחרי השמירה התוכנית והתפריט מתעדכנים
-          מייד בדף הבית ובמסך התזונה של הלקוחה.
+          כדי לעדכן תזונה ללקוחה: הוסיפי ארוחות מהמאגר שלך או מספריית המתכונים, ערכי לפי הצורך, צרי
+          גם תפריט נעוץ אם צריך, ואז לחצי על שמרי תזונה. אחרי השמירה התוכנית והתפריט מתעדכנים מייד
+          בדף הבית ובמסך התזונה של הלקוחה.
         </Text>
       </View>
 
@@ -2708,8 +2716,8 @@ export default function CoachClientPlansModal({ visible, clientId, onClose, onSa
         </View>
 
         <Text style={styles.helperText}>
-          לחצי שוב על &quot;יצירה אוטומטית&quot; כדי לרענן את הטיוטה מהתוכנית הנוכחית. אחרי זה
-          אפשר לערוך או פשוט לשמור כמו שזה.
+          לחצי שוב על &quot;יצירה אוטומטית&quot; כדי לרענן את הטיוטה מהתוכנית הנוכחית. אחרי זה אפשר
+          לערוך או פשוט לשמור כמו שזה.
         </Text>
 
         <Field

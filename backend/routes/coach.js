@@ -743,7 +743,8 @@ function buildPlanTemplateProfilesPayload(value) {
     }
 
     const nutritionTemplate =
-      profile.nutritionTemplate !== undefined && profile.nutritionTemplate !== null
+      profile.nutritionTemplate !== undefined &&
+      profile.nutritionTemplate !== null
         ? buildNutritionPlanPayload(profile.nutritionTemplate || {})
         : undefined;
     const workoutTemplate =
@@ -752,7 +753,8 @@ function buildPlanTemplateProfilesPayload(value) {
         : undefined;
 
     const hasNutritionTemplate =
-      nutritionTemplate !== undefined && Object.keys(nutritionTemplate).length > 0;
+      nutritionTemplate !== undefined &&
+      Object.keys(nutritionTemplate).length > 0;
     const hasWorkoutTemplate =
       workoutTemplate !== undefined && Object.keys(workoutTemplate).length > 0;
 
@@ -761,13 +763,13 @@ function buildPlanTemplateProfilesPayload(value) {
     }
 
     profilesByType.set(normalizeClientTypeKey(typeLabel), {
-      id:
-        parseOptionalText(profile.id) || `plan-template-profile-${index + 1}`,
+      id: parseOptionalText(profile.id) || `plan-template-profile-${index + 1}`,
       typeKey: normalizeClientTypeKey(typeLabel),
       typeLabel,
       nutritionTemplate: hasNutritionTemplate ? nutritionTemplate : null,
       workoutTemplate: hasWorkoutTemplate ? workoutTemplate : null,
-      updatedAt: parseOptionalText(profile.updatedAt) || new Date().toISOString(),
+      updatedAt:
+        parseOptionalText(profile.updatedAt) || new Date().toISOString(),
     });
   });
 

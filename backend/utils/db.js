@@ -290,14 +290,10 @@ function normalizeWorkoutDays(value) {
     notes: String(day?.notes || "").trim(),
     exercises: Array.isArray(day?.exercises)
       ? day.exercises.map((exercise, exerciseIndex) => ({
-          id:
-            exercise?.id ||
-            `exercise-${dayIndex + 1}-${exerciseIndex + 1}`,
-          order:
-            toIntegerOrNull(exercise?.order) ?? exerciseIndex + 1,
+          id: exercise?.id || `exercise-${dayIndex + 1}-${exerciseIndex + 1}`,
+          order: toIntegerOrNull(exercise?.order) ?? exerciseIndex + 1,
           name:
-            String(exercise?.name || "").trim() ||
-            `תרגיל ${exerciseIndex + 1}`,
+            String(exercise?.name || "").trim() || `תרגיל ${exerciseIndex + 1}`,
           externalExerciseId: String(exercise?.externalExerciseId || "").trim(),
           mediaUrl: String(exercise?.mediaUrl || "").trim(),
           sets: toNumberOrNull(exercise?.sets),
@@ -328,12 +324,12 @@ function hasNutritionPlanContent(plan) {
 
   return Boolean(
     plan.title ||
-      plan.notes ||
-      (Array.isArray(plan.meals) && plan.meals.length > 0) ||
-      hasPinnedMenuContent(plan.pinnedMenu) ||
-      Object.values(plan.dailyTargets || {}).some(
-        (value) => value !== null && value !== undefined,
-      ),
+    plan.notes ||
+    (Array.isArray(plan.meals) && plan.meals.length > 0) ||
+    hasPinnedMenuContent(plan.pinnedMenu) ||
+    Object.values(plan.dailyTargets || {}).some(
+      (value) => value !== null && value !== undefined,
+    ),
   );
 }
 
@@ -342,12 +338,12 @@ function hasWorkoutPlanContent(plan) {
 
   return Boolean(
     plan.title ||
-      plan.goalFocus ||
-      plan.notes ||
-      (Array.isArray(plan.days) && plan.days.length > 0) ||
-      Object.values(plan.weeklyTargets || {}).some(
-        (value) => value !== null && value !== undefined,
-      ),
+    plan.goalFocus ||
+    plan.notes ||
+    (Array.isArray(plan.days) && plan.days.length > 0) ||
+    Object.values(plan.weeklyTargets || {}).some(
+      (value) => value !== null && value !== undefined,
+    ),
   );
 }
 
