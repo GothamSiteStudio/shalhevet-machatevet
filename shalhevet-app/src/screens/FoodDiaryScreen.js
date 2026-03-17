@@ -1,20 +1,22 @@
-import React, { useState, useMemo, useCallback } from 'react';
+import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import {
   ActivityIndicator,
   Alert,
   FlatList,
   Image,
-  KeyboardAvoidingView,
+  Keyboard,
   Modal,
+  Platform,
   ScrollView,
   StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
+  useWindowDimensions,
   View,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import DismissKeyboardView from '../components/ui/DismissKeyboardView';
@@ -29,7 +31,6 @@ import {
   getFoodReferenceText,
 } from '../data/foodDatabase';
 import { getFoodDiaryDateKey, normalizeFoodDiaryEntry } from '../utils/foodDiary';
-import { KEYBOARD_AVOIDING_BEHAVIOR } from '../utils/keyboard';
 
 const MEAL_CONFIG = {
   breakfast: { label: 'ארוחת בוקר', icon: 'sunny-outline', color: '#FFA726' },
@@ -153,6 +154,47 @@ function AddFoodModal({ visible, onClose, onAdd, mealType, recentItems = [] }) {
   const [customCarbs, setCustomCarbs] = useState('');
   const [customFat, setCustomFat] = useState('');
   const [mode, setMode] = useState('search'); // 'search' | 'custom'
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
+  const insets = useSafeAreaInsets();
+  const { height: windowHeight } = useWindowDimensions();
+
+  useEffect(() => {
+    if (!visible) {
+      setKeyboardHeight(0);
+      return undefined;
+    }
+
+    const handleKeyboardShow = event => {
+      setKeyboardHeight(event.endCoordinates?.height || 0);
+    };
+
+    const handleKeyboardHide = () => {
+      setKeyboardHeight(0);
+    };
+
+    const showSubscription = Keyboard.addListener(
+      Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow',
+      handleKeyboardShow
+    );
+    const hideSubscription = Keyboard.addListener(
+      Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide',
+      handleKeyboardHide
+    );
+
+    return () => {
+      showSubscription.remove();
+      hideSubscription.remove();
+    };
+  }, [visible]);
+
+  const sheetBottomOffset = Platform.OS === 'ios' ? Math.max(keyboardHeight - insets.bottom, 0) : 0;
+  const availableSheetHeight = windowHeight - sheetBottomOffset - insets.top - 16;
+  const preferredSheetHeight = windowHeight * 0.84;
+  const minimumSheetHeight = 260;
+  const sheetHeight = Math.max(
+    Math.min(preferredSheetHeight, availableSheetHeight),
+    Math.min(minimumSheetHeight, availableSheetHeight)
+  );
 
   const results = useMemo(() => {
     if (mode === 'custom') return [];
@@ -231,10 +273,25 @@ function AddFoodModal({ visible, onClose, onAdd, mealType, recentItems = [] }) {
   const config = MEAL_CONFIG[mealType] || MEAL_CONFIG.snacks;
 
   return (
-    <Modal visible={visible} animationType="slide" transparent onRequestClose={resetAndClose}>
+    <Modal
+      visible={visible}
+      animationType="slide"
+      transparent
+      presentationStyle="overFullScreen"
+      onRequestClose={resetAndClose}
+    >
       <DismissKeyboardView style={styles.flex}>
-        <KeyboardAvoidingView style={styles.modalOverlay} behavior={KEYBOARD_AVOIDING_BEHAVIOR}>
-          <View style={styles.modalContent}>
+        <View style={styles.modalOverlay}>
+          <View
+            style={[
+              styles.modalContent,
+              {
+                height: sheetHeight,
+                marginBottom: sheetBottomOffset,
+                paddingBottom: Math.max(insets.bottom, 18),
+              },
+            ]}
+          >
           <View style={styles.modalHandle} />
 
           {/* Header */}
@@ -273,7 +330,7 @@ function AddFoodModal({ visible, onClose, onAdd, mealType, recentItems = [] }) {
           </View>
 
           {mode === 'search' ? (
-            <>
+            <View style={styles.searchModeContent}>
               {/* Search Input */}
               <View style={styles.searchBox}>
                 <Ionicons name="search" size={18} color={COLORS.textMuted} />
@@ -333,110 +390,121 @@ function AddFoodModal({ visible, onClose, onAdd, mealType, recentItems = [] }) {
               ) : null}
 
               {selectedFood ? (
-                /* Selected Food Details */
-                <View style={styles.selectedCard}>
-                  <TouchableOpacity
-                    style={styles.selectedBack}
-                    onPress={() => setSelectedFood(null)}
-                  >
-                    <Ionicons name="arrow-forward" size={18} color={COLORS.textSecondary} />
-                    <Text style={styles.selectedBackText}>חזרה לרשימה</Text>
-                  </TouchableOpacity>
-                  <Text style={styles.selectedName}>{selectedFood.name}</Text>
-                  <Text style={styles.selectedUnit}>
-                    חישוב לפי: {getFoodReferenceText(selectedFood)}
-                  </Text>
-
-                  <View style={styles.gramsRow}>
-                    <Text style={styles.gramsLabel}>
-                      {measurementConfig?.inputLabel || 'כמות'}:
-                    </Text>
-                    <TextInput
-                      style={styles.gramsInput}
-                      value={quantity}
-                      onChangeText={setQuantity}
-                      keyboardType="numeric"
-                      selectTextOnFocus
-                    />
-                  </View>
-
-                  {calculated && (
-                    <View style={styles.nutritionPreview}>
-                      <View style={styles.nutritionItem}>
-                        <Text style={styles.nutritionValue}>{calculated.calories}</Text>
-                        <Text style={styles.nutritionLabel}>קלוריות</Text>
-                      </View>
-                      <View style={styles.nutritionItem}>
-                        <Text style={[styles.nutritionValue, { color: '#42A5F5' }]}>
-                          {calculated.protein}
-                        </Text>
-                        <Text style={styles.nutritionLabel}>חלבון</Text>
-                      </View>
-                      <View style={styles.nutritionItem}>
-                        <Text style={[styles.nutritionValue, { color: '#FFA726' }]}>
-                          {calculated.carbs}
-                        </Text>
-                        <Text style={styles.nutritionLabel}>פחמימות</Text>
-                      </View>
-                      <View style={styles.nutritionItem}>
-                        <Text style={[styles.nutritionValue, { color: '#EF5350' }]}>
-                          {calculated.fat}
-                        </Text>
-                        <Text style={styles.nutritionLabel}>שומן</Text>
-                      </View>
-                    </View>
-                  )}
-
-                  <TouchableOpacity style={styles.addBtn} onPress={handleAddFromDB}>
-                    <Ionicons name="add-circle" size={20} color={COLORS.white} />
-                    <Text style={styles.addBtnText}>הוסף</Text>
-                  </TouchableOpacity>
-                </View>
-              ) : (
-                /* Food List */
-                <FlatList
-                  data={results}
-                  keyExtractor={item => item.id}
-                  style={styles.foodList}
+                <ScrollView
+                  style={styles.searchResultsArea}
+                  contentContainerStyle={styles.searchScrollContent}
                   showsVerticalScrollIndicator={false}
                   keyboardShouldPersistTaps="handled"
-                  ListEmptyComponent={
-                    <Text style={styles.emptyListText}>
-                      {searchQuery ? 'לא נמצאו תוצאות' : 'הקלד לחיפוש'}
-                    </Text>
-                  }
-                  renderItem={({ item }) => (
+                >
+                  {/* Selected Food Details */}
+                  <View style={styles.selectedCard}>
                     <TouchableOpacity
-                      style={styles.foodItem}
-                      onPress={() => {
-                        setSelectedFood(item);
-                        setQuantity(String(getFoodMeasurementConfig(item).defaultAmount));
-                      }}
+                      style={styles.selectedBack}
+                      onPress={() => setSelectedFood(null)}
                     >
-                      <View style={styles.foodItemRight}>
-                        <Text style={styles.foodItemName}>{item.name}</Text>
-                        <Text style={styles.foodItemMeta}>{getFoodReferenceText(item)}</Text>
-                      </View>
-                      <View style={styles.foodItemMacros}>
-                        <Text style={[styles.foodItemMacro, { color: '#42A5F5' }]}>
-                          נ {item.protein}
-                        </Text>
-                        <Text style={[styles.foodItemMacro, { color: '#FFA726' }]}>
-                          פ {item.carbs}
-                        </Text>
-                        <Text style={[styles.foodItemMacro, { color: '#EF5350' }]}>
-                          ש {item.fat}
-                        </Text>
-                      </View>
+                      <Ionicons name="arrow-forward" size={18} color={COLORS.textSecondary} />
+                      <Text style={styles.selectedBackText}>חזרה לרשימה</Text>
                     </TouchableOpacity>
-                  )}
-                />
+                    <Text style={styles.selectedName}>{selectedFood.name}</Text>
+                    <Text style={styles.selectedUnit}>
+                      חישוב לפי: {getFoodReferenceText(selectedFood)}
+                    </Text>
+
+                    <View style={styles.gramsRow}>
+                      <Text style={styles.gramsLabel}>
+                        {measurementConfig?.inputLabel || 'כמות'}:
+                      </Text>
+                      <TextInput
+                        style={styles.gramsInput}
+                        value={quantity}
+                        onChangeText={setQuantity}
+                        keyboardType="numeric"
+                        selectTextOnFocus
+                      />
+                    </View>
+
+                    {calculated && (
+                      <View style={styles.nutritionPreview}>
+                        <View style={styles.nutritionItem}>
+                          <Text style={styles.nutritionValue}>{calculated.calories}</Text>
+                          <Text style={styles.nutritionLabel}>קלוריות</Text>
+                        </View>
+                        <View style={styles.nutritionItem}>
+                          <Text style={[styles.nutritionValue, { color: '#42A5F5' }]}>
+                            {calculated.protein}
+                          </Text>
+                          <Text style={styles.nutritionLabel}>חלבון</Text>
+                        </View>
+                        <View style={styles.nutritionItem}>
+                          <Text style={[styles.nutritionValue, { color: '#FFA726' }]}>
+                            {calculated.carbs}
+                          </Text>
+                          <Text style={styles.nutritionLabel}>פחמימות</Text>
+                        </View>
+                        <View style={styles.nutritionItem}>
+                          <Text style={[styles.nutritionValue, { color: '#EF5350' }]}>
+                            {calculated.fat}
+                          </Text>
+                          <Text style={styles.nutritionLabel}>שומן</Text>
+                        </View>
+                      </View>
+                    )}
+
+                    <TouchableOpacity style={styles.addBtn} onPress={handleAddFromDB}>
+                      <Ionicons name="add-circle" size={20} color={COLORS.white} />
+                      <Text style={styles.addBtnText}>הוסף</Text>
+                    </TouchableOpacity>
+                  </View>
+                </ScrollView>
+              ) : (
+                /* Food List */
+                <View style={styles.searchResultsArea}>
+                  <FlatList
+                    data={results}
+                    keyExtractor={item => item.id}
+                    style={styles.foodList}
+                    contentContainerStyle={styles.foodListContent}
+                    showsVerticalScrollIndicator={false}
+                    keyboardShouldPersistTaps="handled"
+                    ListEmptyComponent={
+                      <Text style={styles.emptyListText}>
+                        {searchQuery ? 'לא נמצאו תוצאות' : 'הקלד לחיפוש'}
+                      </Text>
+                    }
+                    renderItem={({ item }) => (
+                      <TouchableOpacity
+                        style={styles.foodItem}
+                        onPress={() => {
+                          setSelectedFood(item);
+                          setQuantity(String(getFoodMeasurementConfig(item).defaultAmount));
+                        }}
+                      >
+                        <View style={styles.foodItemRight}>
+                          <Text style={styles.foodItemName}>{item.name}</Text>
+                          <Text style={styles.foodItemMeta}>{getFoodReferenceText(item)}</Text>
+                        </View>
+                        <View style={styles.foodItemMacros}>
+                          <Text style={[styles.foodItemMacro, { color: '#42A5F5' }]}>
+                            נ {item.protein}
+                          </Text>
+                          <Text style={[styles.foodItemMacro, { color: '#FFA726' }]}>
+                            פ {item.carbs}
+                          </Text>
+                          <Text style={[styles.foodItemMacro, { color: '#EF5350' }]}>
+                            ש {item.fat}
+                          </Text>
+                        </View>
+                      </TouchableOpacity>
+                    )}
+                  />
+                </View>
               )}
-            </>
+            </View>
           ) : (
             /* Custom Entry Mode */
             <ScrollView
               style={styles.customForm}
+              contentContainerStyle={styles.customFormContent}
               showsVerticalScrollIndicator={false}
               keyboardShouldPersistTaps="handled"
             >
@@ -493,7 +561,7 @@ function AddFoodModal({ visible, onClose, onAdd, mealType, recentItems = [] }) {
             </ScrollView>
           )}
           </View>
-        </KeyboardAvoidingView>
+        </View>
       </DismissKeyboardView>
     </Modal>
   );
@@ -1044,12 +1112,12 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.card,
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
-    padding: 20,
-    maxHeight: '85%',
+    paddingHorizontal: 20,
+    paddingTop: 20,
     borderTopWidth: 1,
     borderColor: COLORS.border,
-    flex: 0,
     flexShrink: 1,
+    overflow: 'hidden',
   },
   modalHandle: {
     width: 40,
@@ -1089,6 +1157,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     marginBottom: 10,
     gap: 8,
+  },
+  searchModeContent: {
+    flex: 1,
+    minHeight: 0,
   },
   searchInput: {
     flex: 1,
@@ -1162,9 +1234,14 @@ const styles = StyleSheet.create({
     marginTop: 8,
     textAlign: 'right',
   },
+  searchResultsArea: {
+    flex: 1,
+    minHeight: 0,
+  },
 
   // Food List
-  foodList: { flex: 1, minHeight: 120 },
+  foodList: { flex: 1, minHeight: 0 },
+  foodListContent: { flexGrow: 1, paddingBottom: 12 },
   foodItem: {
     flexDirection: 'row-reverse',
     alignItems: 'center',
@@ -1178,9 +1255,10 @@ const styles = StyleSheet.create({
   foodItemMacros: { flexDirection: 'row', gap: 6, alignItems: 'center' },
   foodItemMacro: { fontSize: 11, fontWeight: '600' },
   emptyListText: { color: COLORS.textMuted, fontSize: 14, textAlign: 'center', marginTop: 30 },
+  searchScrollContent: { flexGrow: 1, paddingBottom: 12 },
 
   // Selected Food
-  selectedCard: { paddingVertical: 8 },
+  selectedCard: { flexGrow: 1, paddingVertical: 8 },
   selectedBack: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 12 },
   selectedBackText: { color: COLORS.textSecondary, fontSize: 13 },
   selectedName: { color: COLORS.white, fontSize: 20, fontWeight: '700', textAlign: 'right' },
@@ -1224,7 +1302,8 @@ const styles = StyleSheet.create({
   addBtnText: { color: COLORS.white, fontSize: 16, fontWeight: '700' },
 
   // Custom Form
-  customForm: { maxHeight: 380 },
+  customForm: { flex: 1, minHeight: 0 },
+  customFormContent: { flexGrow: 1, paddingBottom: 8 },
   customInput: {
     backgroundColor: COLORS.inputBg,
     color: COLORS.white,
