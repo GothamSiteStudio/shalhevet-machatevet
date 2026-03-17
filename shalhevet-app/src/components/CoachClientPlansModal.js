@@ -17,6 +17,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import ViewShot from 'react-native-view-shot';
+import DismissKeyboardView from './ui/DismissKeyboardView';
 import { COLORS } from '../theme/colors';
 import { coachAPI } from '../services/api';
 import { RECIPE_CATALOG, createNutritionMealFromRecipe } from '../data/recipeCatalog';
@@ -35,6 +36,7 @@ import {
 } from '../utils/pinnedMenu';
 import CoachFoodDiaryEditorModal from './CoachFoodDiaryEditorModal';
 import PinnedMenuCard, { PINNED_MENU_TEMPLATE_ASPECT_RATIO } from './PinnedMenuCard';
+import { KEYBOARD_AVOIDING_BEHAVIOR, KEYBOARD_DISMISS_MODE } from '../utils/keyboard';
 
 const TABS = [
   { id: 'account', label: 'חשבון', icon: 'key-outline' },
@@ -67,6 +69,7 @@ const PINNED_MENU_EXPORT_WIDTH = 360;
 const PINNED_MENU_EXPORT_HEIGHT = Math.round(
   PINNED_MENU_EXPORT_WIDTH / PINNED_MENU_TEMPLATE_ASPECT_RATIO
 );
+const PINNED_MENU_MODAL_PREVIEW_HEIGHT = 480;
 
 function makeId(prefix) {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
@@ -2783,7 +2786,12 @@ export default function CoachClientPlansModal({ visible, clientId, onClose, onSa
           <View style={styles.pinnedMenuPreviewWrap}>
             <Text style={styles.fieldLabel}>כך זה ייראה למתאמנת</Text>
             <View style={styles.pinnedMenuCaptureSurface}>
-              <PinnedMenuCard menu={pinnedMenuDraft} caption="תפריט אישי" />
+              <PinnedMenuCard
+                menu={pinnedMenuDraft}
+                caption="תפריט אישי"
+                compact
+                displayHeight={PINNED_MENU_MODAL_PREVIEW_HEIGHT}
+              />
             </View>
             <Text style={styles.helperText}>
               אפשר לשמור את התפריט כתמונה עם הטמפלייט המלא או לשתף אותו ישירות.
@@ -2791,11 +2799,7 @@ export default function CoachClientPlansModal({ visible, clientId, onClose, onSa
             <View pointerEvents="none" style={styles.hiddenPinnedMenuExportWrap}>
               <ViewShot ref={pinnedMenuExportRef} style={styles.hiddenPinnedMenuExportSurface}>
                 <View collapsable={false} style={styles.hiddenPinnedMenuExportCard}>
-                  <PinnedMenuCard
-                    menu={pinnedMenuDraft}
-                    caption="תפריט אישי"
-                    backgroundResizeMode="cover"
-                  />
+                  <PinnedMenuCard menu={pinnedMenuDraft} caption="תפריט אישי" />
                 </View>
               </ViewShot>
             </View>
@@ -3839,11 +3843,9 @@ export default function CoachClientPlansModal({ visible, clientId, onClose, onSa
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <KeyboardAvoidingView
-        style={styles.modalOverlay}
-        behavior={Platform.select({ ios: 'padding', android: 'height' })}
-      >
-        <View style={styles.editorSheet}>
+      <DismissKeyboardView style={{ flex: 1 }}>
+        <KeyboardAvoidingView style={styles.modalOverlay} behavior={KEYBOARD_AVOIDING_BEHAVIOR}>
+          <View style={styles.editorSheet}>
           <View style={styles.modalHandle} />
 
           <View style={styles.modalTopRow}>
@@ -3931,8 +3933,7 @@ export default function CoachClientPlansModal({ visible, clientId, onClose, onSa
                 style={styles.contentScroll}
                 contentContainerStyle={styles.contentContainer}
                 showsVerticalScrollIndicator={false}
-                keyboardShouldPersistTaps="handled"
-                keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
+                keyboardDismissMode={KEYBOARD_DISMISS_MODE}
               >
                 {activeTab === 'account' ? renderAccountTab() : null}
                 {activeTab === 'goals' ? renderGoalsTab() : null}
@@ -3956,18 +3957,19 @@ export default function CoachClientPlansModal({ visible, clientId, onClose, onSa
               </View>
             </>
           )}
-        </View>
+          </View>
 
-        <CoachFoodDiaryEditorModal
-          visible={foodDiaryEditorVisible}
-          entry={editingFoodDiaryEntry}
-          saving={foodDiarySaving}
-          onClose={() => {
-            if (!foodDiarySaving) setFoodDiaryEditorVisible(false);
-          }}
-          onSave={handleSaveFoodDiary}
-        />
-      </KeyboardAvoidingView>
+          <CoachFoodDiaryEditorModal
+            visible={foodDiaryEditorVisible}
+            entry={editingFoodDiaryEntry}
+            saving={foodDiarySaving}
+            onClose={() => {
+              if (!foodDiarySaving) setFoodDiaryEditorVisible(false);
+            }}
+            onSave={handleSaveFoodDiary}
+          />
+        </KeyboardAvoidingView>
+      </DismissKeyboardView>
     </Modal>
   );
 }

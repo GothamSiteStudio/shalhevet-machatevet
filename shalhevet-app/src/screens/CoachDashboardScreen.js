@@ -23,16 +23,17 @@ import {
   ActivityIndicator,
   RefreshControl,
   KeyboardAvoidingView,
-  Platform,
   AccessibilityInfo,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import DismissKeyboardView from '../components/ui/DismissKeyboardView';
 import { COLORS } from '../theme/colors';
 import { coachAPI, tokenStorage } from '../services/api';
 import { CATALOG_MEAL_SOURCE, mergeRecipeCatalogWithCoachMeals } from '../data/recipeCatalog';
 import CoachClientPlansModal from '../components/CoachClientPlansModal';
 import useStore from '../store/useStore';
+import { KEYBOARD_AVOIDING_BEHAVIOR, KEYBOARD_DISMISS_MODE } from '../utils/keyboard';
 
 // ─── קומפוננטת כרטיס סטטיסטיקה ────────────────────────────────────────────
 function StatCard({ value, label, icon, color }) {
@@ -273,134 +274,138 @@ function AddClientModal({ visible, onClose, onAdded }) {
       onRequestClose={onClose}
       accessibilityViewIsModal={true}
     >
-      <KeyboardAvoidingView
-        style={styles.modalOverlay}
-        behavior={Platform.select({ ios: 'padding', android: 'height' })}
-      >
-        <View style={styles.modalSheet}>
+      <DismissKeyboardView style={{ flex: 1 }}>
+        <KeyboardAvoidingView style={styles.modalOverlay} behavior={KEYBOARD_AVOIDING_BEHAVIOR}>
+          <View style={styles.modalSheet}>
           <View style={styles.modalHandle} />
           <Text style={styles.modalTitle} accessibilityRole="header">הוספת לקוחה חדשה</Text>
           <Text style={styles.modalSub}>המאמנת פותחת חשבון ישירות</Text>
 
-          {formMessage ? (
-            <View
-              style={[
-                styles.formMessage,
-                formMessage.type === 'success' ? styles.formMessageSuccess : styles.formMessageError,
-              ]}
-              accessible={true}
-              accessibilityLiveRegion="polite"
+            <ScrollView
+              showsVerticalScrollIndicator={false}
+              contentContainerStyle={{ paddingBottom: 8 }}
             >
-              <Ionicons
-                name={formMessage.type === 'success' ? 'checkmark-circle-outline' : 'alert-circle-outline'}
-                size={18}
-                color={formMessage.type === 'success' ? COLORS.success : COLORS.danger}
-                style={styles.formMessageIcon}
-                accessible={false}
-              />
-              <Text
-                style={[
-                  styles.formMessageText,
-                  formMessage.type === 'success' ? styles.formMessageTextSuccess : styles.formMessageTextError,
-                ]}
+              {formMessage ? (
+                <View
+                  style={[
+                    styles.formMessage,
+                    formMessage.type === 'success' ? styles.formMessageSuccess : styles.formMessageError,
+                  ]}
+                  accessible={true}
+                  accessibilityLiveRegion="polite"
+                >
+                  <Ionicons
+                    name={formMessage.type === 'success' ? 'checkmark-circle-outline' : 'alert-circle-outline'}
+                    size={18}
+                    color={formMessage.type === 'success' ? COLORS.success : COLORS.danger}
+                    style={styles.formMessageIcon}
+                    accessible={false}
+                  />
+                  <Text
+                    style={[
+                      styles.formMessageText,
+                      formMessage.type === 'success' ? styles.formMessageTextSuccess : styles.formMessageTextError,
+                    ]}
+                  >
+                    {formMessage.text}
+                  </Text>
+                </View>
+              ) : null}
+
+              {[
+                {
+                  label: 'שם מלא *',
+                  value: name,
+                  setter: setName,
+                  placeholder: 'שם פרטי ומשפחה',
+                  autoComplete: 'name',
+                  textContentType: 'name',
+                },
+                {
+                  label: 'אימייל *',
+                  value: email,
+                  setter: setEmail,
+                  placeholder: 'email@gmail.com',
+                  keyboard: 'email-address',
+                  autoCapitalize: 'none',
+                  autoComplete: 'email',
+                  textContentType: 'emailAddress',
+                },
+                {
+                  label: 'סיסמה זמנית *',
+                  value: password,
+                  setter: setPassword,
+                  placeholder: 'לפחות 6 תווים',
+                  secure: true,
+                  autoCapitalize: 'none',
+                  autoComplete: 'new-password',
+                  textContentType: 'newPassword',
+                },
+                {
+                  label: 'טלפון',
+                  value: phone,
+                  setter: setPhone,
+                  placeholder: '050-0000000',
+                  keyboard: 'phone-pad',
+                  autoComplete: 'tel',
+                  textContentType: 'telephoneNumber',
+                },
+              ].map(field => (
+                <View key={field.label} style={{ marginBottom: 12 }}>
+                  <Text style={styles.fieldLabel}>{field.label}</Text>
+                  <TextInput
+                    style={styles.input}
+                    value={field.value}
+                    onChangeText={value => {
+                      if (formMessage) {
+                        setFormMessage(null);
+                      }
+                      field.setter(value);
+                    }}
+                    placeholder={field.placeholder}
+                    placeholderTextColor={COLORS.textMuted}
+                    keyboardType={field.keyboard || 'default'}
+                    secureTextEntry={field.secure}
+                    textAlign="right"
+                    autoCapitalize={field.autoCapitalize || 'sentences'}
+                    autoComplete={field.autoComplete}
+                    autoCorrect={false}
+                    textContentType={field.textContentType}
+                    accessibilityLabel={field.label}
+                  />
+                </View>
+              ))}
+            </ScrollView>
+
+            <View style={styles.modalBtns}>
+              <TouchableOpacity
+                style={styles.cancelBtn}
+                onPress={onClose}
+                accessible={true}
+                accessibilityRole="button"
+                accessibilityLabel="ביטול הוספת לקוחה"
               >
-                {formMessage.text}
-              </Text>
+                <Text style={styles.cancelBtnText}>ביטול</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.submitBtn}
+                onPress={handleAdd}
+                disabled={loading}
+                accessible={true}
+                accessibilityRole="button"
+                accessibilityLabel="הוספת לקוחה חדשה"
+                accessibilityState={{ disabled: loading, busy: loading }}
+              >
+                {loading ? (
+                  <ActivityIndicator color={COLORS.white} accessible={false} />
+                ) : (
+                  <Text style={styles.submitBtnText}>הוספה</Text>
+                )}
+              </TouchableOpacity>
             </View>
-          ) : null}
-
-          {[
-            {
-              label: 'שם מלא *',
-              value: name,
-              setter: setName,
-              placeholder: 'שם פרטי ומשפחה',
-              autoComplete: 'name',
-              textContentType: 'name',
-            },
-            {
-              label: 'אימייל *',
-              value: email,
-              setter: setEmail,
-              placeholder: 'email@gmail.com',
-              keyboard: 'email-address',
-              autoCapitalize: 'none',
-              autoComplete: 'email',
-              textContentType: 'emailAddress',
-            },
-            {
-              label: 'סיסמה זמנית *',
-              value: password,
-              setter: setPassword,
-              placeholder: 'לפחות 6 תווים',
-              secure: true,
-              autoCapitalize: 'none',
-              autoComplete: 'new-password',
-              textContentType: 'newPassword',
-            },
-            {
-              label: 'טלפון',
-              value: phone,
-              setter: setPhone,
-              placeholder: '050-0000000',
-              keyboard: 'phone-pad',
-              autoComplete: 'tel',
-              textContentType: 'telephoneNumber',
-            },
-          ].map(field => (
-            <View key={field.label} style={{ marginBottom: 12 }}>
-              <Text style={styles.fieldLabel}>{field.label}</Text>
-              <TextInput
-                style={styles.input}
-                value={field.value}
-                onChangeText={value => {
-                  if (formMessage) {
-                    setFormMessage(null);
-                  }
-                  field.setter(value);
-                }}
-                placeholder={field.placeholder}
-                placeholderTextColor={COLORS.textMuted}
-                keyboardType={field.keyboard || 'default'}
-                secureTextEntry={field.secure}
-                textAlign="right"
-                autoCapitalize={field.autoCapitalize || 'sentences'}
-                autoComplete={field.autoComplete}
-                autoCorrect={false}
-                textContentType={field.textContentType}
-                accessibilityLabel={field.label}
-              />
-            </View>
-          ))}
-
-          <View style={styles.modalBtns}>
-            <TouchableOpacity
-              style={styles.cancelBtn}
-              onPress={onClose}
-              accessible={true}
-              accessibilityRole="button"
-              accessibilityLabel="ביטול הוספת לקוחה"
-            >
-              <Text style={styles.cancelBtnText}>ביטול</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.submitBtn}
-              onPress={handleAdd}
-              disabled={loading}
-              accessible={true}
-              accessibilityRole="button"
-              accessibilityLabel="הוספת לקוחה חדשה"
-              accessibilityState={{ disabled: loading, busy: loading }}
-            >
-              {loading ? (
-                <ActivityIndicator color={COLORS.white} accessible={false} />
-              ) : (
-                <Text style={styles.submitBtnText}>הוספה</Text>
-              )}
-            </TouchableOpacity>
           </View>
-        </View>
-      </KeyboardAvoidingView>
+        </KeyboardAvoidingView>
+      </DismissKeyboardView>
     </Modal>
   );
 }
@@ -541,16 +546,14 @@ function CoachMealEditorModal({ visible, onClose, onSaved, editMeal }) {
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <KeyboardAvoidingView
-        style={styles.modalOverlay}
-        behavior={Platform.select({ ios: 'padding', android: 'height' })}
-      >
-        <View style={[styles.modalSheet, { maxHeight: '92%' }]}>
+      <DismissKeyboardView style={{ flex: 1 }}>
+        <KeyboardAvoidingView style={styles.modalOverlay} behavior={KEYBOARD_AVOIDING_BEHAVIOR}>
+          <View style={[styles.modalSheet, { maxHeight: '92%' }]}>
           <View style={styles.modalHandle} />
           <Text style={styles.modalTitle}>{isEditing ? 'עריכת ארוחה' : 'ארוחה חדשה למאגר'}</Text>
           <Text style={styles.modalSub}>הארוחה תישמר במאגר ותוכלי להוסיף אותה ללקוחות</Text>
 
-          <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+          <ScrollView showsVerticalScrollIndicator={false}>
             <View style={{ marginBottom: 12 }}>
               <Text style={styles.fieldLabel}>שם הארוחה *</Text>
               <TextInput
@@ -694,20 +697,21 @@ function CoachMealEditorModal({ visible, onClose, onSaved, editMeal }) {
             </View>
           </ScrollView>
 
-          <View style={styles.modalBtns}>
-            <TouchableOpacity style={styles.cancelBtn} onPress={onClose}>
-              <Text style={styles.cancelBtnText}>ביטול</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.submitBtn} onPress={handleSave} disabled={loading}>
-              {loading ? (
-                <ActivityIndicator color={COLORS.white} />
-              ) : (
-                <Text style={styles.submitBtnText}>{isEditing ? 'עדכון' : 'הוספה'}</Text>
-              )}
-            </TouchableOpacity>
+            <View style={styles.modalBtns}>
+              <TouchableOpacity style={styles.cancelBtn} onPress={onClose}>
+                <Text style={styles.cancelBtnText}>ביטול</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.submitBtn} onPress={handleSave} disabled={loading}>
+                {loading ? (
+                  <ActivityIndicator color={COLORS.white} />
+                ) : (
+                  <Text style={styles.submitBtnText}>{isEditing ? 'עדכון' : 'הוספה'}</Text>
+                )}
+              </TouchableOpacity>
+            </View>
           </View>
-        </View>
-      </KeyboardAvoidingView>
+        </KeyboardAvoidingView>
+      </DismissKeyboardView>
     </Modal>
   );
 }
@@ -1078,8 +1082,9 @@ export default function CoachDashboardScreen() {
 
   return (
     <SafeAreaView style={styles.safe}>
-      {/* Header */}
-      <View style={styles.header}>
+      <DismissKeyboardView style={{ flex: 1 }}>
+        {/* Header */}
+        <View style={styles.header}>
         <TouchableOpacity
           onPress={() =>
             Alert.alert('יציאה', 'האם לצאת?', [
@@ -1097,20 +1102,19 @@ export default function CoachDashboardScreen() {
         <TouchableOpacity onPress={() => setShowAddModal(true)} style={styles.addBtn}>
           <Ionicons name="person-add-outline" size={22} color={COLORS.primary} />
         </TouchableOpacity>
-      </View>
+        </View>
 
-      <ScrollView
-        showsVerticalScrollIndicator={false}
-        keyboardShouldPersistTaps="handled"
-        keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={onRefresh}
-            tintColor={COLORS.primary}
-          />
-        }
-      >
+        <ScrollView
+          showsVerticalScrollIndicator={false}
+          keyboardDismissMode={KEYBOARD_DISMISS_MODE}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+              tintColor={COLORS.primary}
+            />
+          }
+        >
         {/* Stats Row */}
         {stats && (
           <View style={styles.statsRow}>
@@ -1619,7 +1623,8 @@ export default function CoachDashboardScreen() {
             </>
           )}
         </View>
-      </ScrollView>
+        </ScrollView>
+      </DismissKeyboardView>
 
       <AddClientModal
         visible={showAddModal}

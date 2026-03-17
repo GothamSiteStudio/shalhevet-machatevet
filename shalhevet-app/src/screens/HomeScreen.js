@@ -443,7 +443,12 @@ export default function HomeScreen({ navigation }) {
               </View>
             </View>
 
-            <PinnedMenuCard menu={pinnedMenu} compact caption="נעוץ מהמאמנת" />
+            <PinnedMenuCard
+              menu={pinnedMenu}
+              compact
+              caption="נעוץ מהמאמנת"
+              displayHeight={360}
+            />
           </TouchableOpacity>
         ) : null}
 

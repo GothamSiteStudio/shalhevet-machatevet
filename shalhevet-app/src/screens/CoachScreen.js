@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import {
+  ActivityIndicator,
   View,
   Text,
   TouchableOpacity,
@@ -15,9 +16,11 @@ import {
 import { useFocusEffect } from '@react-navigation/native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons, MaterialCommunityIcons, FontAwesome5 } from '@expo/vector-icons';
+import DismissKeyboardView from '../components/ui/DismissKeyboardView';
 import { COLORS } from '../theme/colors';
 import { usersAPI } from '../services/api';
 import useStore from '../store/useStore';
+import { KEYBOARD_AVOIDING_BEHAVIOR, KEYBOARD_DISMISS_MODE } from '../utils/keyboard';
 
 function SectionHeader({ title, icon }) {
   return (
@@ -48,45 +51,49 @@ function MeetingRequestModal({ visible, onClose, onSubmit, saving }) {
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <KeyboardAvoidingView
-        style={styles.modalOverlay}
-        behavior={Platform.select({ ios: 'padding', android: 'height' })}
-      >
-        <View style={styles.modalSheet}>
-          <View style={styles.modalHandle} />
-          <Text style={styles.modalTitle}>בקשת פגישה</Text>
-          <Text style={styles.modalSub}>שלח בקשה לפגישה עם שלהבת</Text>
-          <Text style={styles.inputLabel}>תאריך מבוקש</Text>
-          <TextInput
-            style={styles.input}
-            placeholder="לדוגמה: יום ב׳ 10:00"
-            placeholderTextColor={COLORS.textMuted}
-            value={date}
-            onChangeText={setDate}
-            textAlign="right"
-          />
-          <Text style={styles.inputLabel}>הערות (אופציונלי)</Text>
-          <TextInput
-            style={[styles.input, styles.inputMulti]}
-            placeholder="נושא הפגישה, שאלות וכו׳..."
-            placeholderTextColor={COLORS.textMuted}
-            value={notes}
-            onChangeText={setNotes}
-            multiline
-            numberOfLines={3}
-            textAlign="right"
-            textAlignVertical="top"
-          />
-          <View style={styles.modalBtns}>
-            <TouchableOpacity style={styles.cancelBtn} onPress={onClose}>
-              <Text style={styles.cancelBtnText}>ביטול</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.submitBtn} onPress={handleSubmit} disabled={saving}>
-              <Text style={styles.submitBtnText}>{saving ? 'שולח...' : 'שלח בקשה'}</Text>
-            </TouchableOpacity>
+      <DismissKeyboardView style={{ flex: 1 }}>
+        <KeyboardAvoidingView style={styles.modalOverlay} behavior={KEYBOARD_AVOIDING_BEHAVIOR}>
+          <View style={styles.modalSheet}>
+            <View style={styles.modalHandle} />
+            <Text style={styles.modalTitle}>בקשת פגישה</Text>
+            <Text style={styles.modalSub}>שלח בקשה לפגישה עם שלהבת</Text>
+            <ScrollView
+              showsVerticalScrollIndicator={false}
+              contentContainerStyle={{ paddingBottom: 8 }}
+            >
+              <Text style={styles.inputLabel}>תאריך מבוקש</Text>
+              <TextInput
+                style={styles.input}
+                placeholder="לדוגמה: יום ב׳ 10:00"
+                placeholderTextColor={COLORS.textMuted}
+                value={date}
+                onChangeText={setDate}
+                textAlign="right"
+              />
+              <Text style={styles.inputLabel}>הערות (אופציונלי)</Text>
+              <TextInput
+                style={[styles.input, styles.inputMulti]}
+                placeholder="נושא הפגישה, שאלות וכו׳..."
+                placeholderTextColor={COLORS.textMuted}
+                value={notes}
+                onChangeText={setNotes}
+                multiline
+                numberOfLines={3}
+                textAlign="right"
+                textAlignVertical="top"
+              />
+            </ScrollView>
+            <View style={styles.modalBtns}>
+              <TouchableOpacity style={styles.cancelBtn} onPress={onClose}>
+                <Text style={styles.cancelBtnText}>ביטול</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.submitBtn} onPress={handleSubmit} disabled={saving}>
+                <Text style={styles.submitBtnText}>{saving ? 'שולח...' : 'שלח בקשה'}</Text>
+              </TouchableOpacity>
+            </View>
           </View>
-        </View>
-      </KeyboardAvoidingView>
+        </KeyboardAvoidingView>
+      </DismissKeyboardView>
     </Modal>
   );
 }
@@ -109,35 +116,39 @@ function UpdateFormModal({ visible, onClose, onSubmit, saving }) {
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <KeyboardAvoidingView
-        style={styles.modalOverlay}
-        behavior={Platform.select({ ios: 'padding', android: 'height' })}
-      >
-        <View style={styles.modalSheet}>
-          <View style={styles.modalHandle} />
-          <Text style={styles.modalTitle}>שלחי עדכון שבועי</Text>
-          <Text style={styles.modalSub}>ספרי לשלהבת איך הולך השבוע</Text>
-          <TextInput
-            style={[styles.input, styles.inputLarge]}
-            placeholder="עדכוני על המשקל, האימונים, התזונה, איך את מרגישה..."
-            placeholderTextColor={COLORS.textMuted}
-            value={text}
-            onChangeText={setText}
-            multiline
-            numberOfLines={5}
-            textAlign="right"
-            textAlignVertical="top"
-          />
-          <View style={styles.modalBtns}>
-            <TouchableOpacity style={styles.cancelBtn} onPress={onClose}>
-              <Text style={styles.cancelBtnText}>ביטול</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.submitBtn} onPress={handleSubmit} disabled={saving}>
-              <Text style={styles.submitBtnText}>{saving ? 'שולח...' : 'שלח עדכון'}</Text>
-            </TouchableOpacity>
+      <DismissKeyboardView style={{ flex: 1 }}>
+        <KeyboardAvoidingView style={styles.modalOverlay} behavior={KEYBOARD_AVOIDING_BEHAVIOR}>
+          <View style={styles.modalSheet}>
+            <View style={styles.modalHandle} />
+            <Text style={styles.modalTitle}>שלחי עדכון שבועי</Text>
+            <Text style={styles.modalSub}>ספרי לשלהבת איך הולך השבוע</Text>
+            <ScrollView
+              showsVerticalScrollIndicator={false}
+              contentContainerStyle={{ paddingBottom: 8 }}
+            >
+              <TextInput
+                style={[styles.input, styles.inputLarge]}
+                placeholder="עדכוני על המשקל, האימונים, התזונה, איך את מרגישה..."
+                placeholderTextColor={COLORS.textMuted}
+                value={text}
+                onChangeText={setText}
+                multiline
+                numberOfLines={5}
+                textAlign="right"
+                textAlignVertical="top"
+              />
+            </ScrollView>
+            <View style={styles.modalBtns}>
+              <TouchableOpacity style={styles.cancelBtn} onPress={onClose}>
+                <Text style={styles.cancelBtnText}>ביטול</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.submitBtn} onPress={handleSubmit} disabled={saving}>
+                <Text style={styles.submitBtnText}>{saving ? 'שולח...' : 'שלח עדכון'}</Text>
+              </TouchableOpacity>
+            </View>
           </View>
-        </View>
-      </KeyboardAvoidingView>
+        </KeyboardAvoidingView>
+      </DismissKeyboardView>
     </Modal>
   );
 }
@@ -241,130 +252,133 @@ function CheckInModal({ visible, onClose, template, entry, saving, onSubmit }) {
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <KeyboardAvoidingView
-        style={styles.modalOverlay}
-        behavior={Platform.select({ ios: 'padding', android: 'height' })}
-      >
-        <View style={[styles.modalSheet, { maxHeight: '88%' }]}>
-          <View style={styles.modalHandle} />
-          <Text style={styles.modalTitle}>{template?.title || 'צ׳ק-אין שבועי'}</Text>
-          <Text style={styles.modalSub}>{template?.intro || 'מלאי את הטופס ושלחי עדכון מסודר למאמנת.'}</Text>
+      <DismissKeyboardView style={{ flex: 1 }}>
+        <KeyboardAvoidingView style={styles.modalOverlay} behavior={KEYBOARD_AVOIDING_BEHAVIOR}>
+          <View style={[styles.modalSheet, { maxHeight: '88%' }]}>
+            <View style={styles.modalHandle} />
+            <Text style={styles.modalTitle}>{template?.title || 'צ׳ק-אין שבועי'}</Text>
+            <Text style={styles.modalSub}>{template?.intro || 'מלאי את הטופס ושלחי עדכון מסודר למאמנת.'}</Text>
 
-          <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
-            {(template?.questions || []).map(question => {
-              const answer = draft.answers.find(item => item.questionId === question.id);
+            <ScrollView showsVerticalScrollIndicator={false}>
+              {(template?.questions || []).map(question => {
+                const answer = draft.answers.find(item => item.questionId === question.id);
 
-              return (
-                <View key={question.id} style={styles.checkInQuestionCard}>
-                  <Text style={styles.checkInQuestionLabel}>{question.label}</Text>
-                  {question.helperText ? (
-                    <Text style={styles.checkInQuestionHelp}>{question.helperText}</Text>
-                  ) : null}
+                return (
+                  <View key={question.id} style={styles.checkInQuestionCard}>
+                    <Text style={styles.checkInQuestionLabel}>{question.label}</Text>
+                    {question.helperText ? (
+                      <Text style={styles.checkInQuestionHelp}>{question.helperText}</Text>
+                    ) : null}
 
-                  {question.type === 'yesNo' ? (
-                    <View style={styles.inlineChoiceRow}>
-                      {[
-                        { value: false, label: 'לא' },
-                        { value: true, label: 'כן' },
-                      ].map(option => (
-                        <TouchableOpacity
-                          key={option.label}
-                          style={[
-                            styles.inlineChoiceChip,
-                            answer?.value === option.value && styles.inlineChoiceChipActive,
-                          ]}
-                          onPress={() => updateAnswerValue(question.id, option.value)}
-                        >
-                          <Text
+                    {question.type === 'yesNo' ? (
+                      <View style={styles.inlineChoiceRow}>
+                        {[
+                          { value: false, label: 'לא' },
+                          { value: true, label: 'כן' },
+                        ].map(option => (
+                          <TouchableOpacity
+                            key={option.label}
                             style={[
-                              styles.inlineChoiceChipText,
-                              answer?.value === option.value && styles.inlineChoiceChipTextActive,
+                              styles.inlineChoiceChip,
+                              answer?.value === option.value && styles.inlineChoiceChipActive,
                             ]}
+                            onPress={() => updateAnswerValue(question.id, option.value)}
                           >
-                            {option.label}
-                          </Text>
-                        </TouchableOpacity>
-                      ))}
-                    </View>
-                  ) : null}
+                            <Text
+                              style={[
+                                styles.inlineChoiceChipText,
+                                answer?.value === option.value && styles.inlineChoiceChipTextActive,
+                              ]}
+                            >
+                              {option.label}
+                            </Text>
+                          </TouchableOpacity>
+                        ))}
+                      </View>
+                    ) : null}
 
-                  {question.type === 'scale' ? (
-                    <View style={styles.inlineChoiceWrap}>
-                      {[1, 2, 3, 4, 5].map(value => (
-                        <TouchableOpacity
-                          key={value}
-                          style={[
-                            styles.inlineChoiceChip,
-                            answer?.value === value && styles.inlineChoiceChipActive,
-                          ]}
-                          onPress={() => updateAnswerValue(question.id, value)}
-                        >
-                          <Text
+                    {question.type === 'scale' ? (
+                      <View style={styles.inlineChoiceWrap}>
+                        {[1, 2, 3, 4, 5].map(value => (
+                          <TouchableOpacity
+                            key={value}
                             style={[
-                              styles.inlineChoiceChipText,
-                              answer?.value === value && styles.inlineChoiceChipTextActive,
+                              styles.inlineChoiceChip,
+                              answer?.value === value && styles.inlineChoiceChipActive,
                             ]}
+                            onPress={() => updateAnswerValue(question.id, value)}
                           >
-                            {value}
-                          </Text>
-                        </TouchableOpacity>
-                      ))}
-                    </View>
-                  ) : null}
+                            <Text
+                              style={[
+                                styles.inlineChoiceChipText,
+                                answer?.value === value && styles.inlineChoiceChipTextActive,
+                              ]}
+                            >
+                              {value}
+                            </Text>
+                          </TouchableOpacity>
+                        ))}
+                      </View>
+                    ) : null}
 
-                  {question.type === 'number' ? (
-                    <TextInput
-                      style={styles.input}
-                      value={answer?.value === null || answer?.value === undefined ? '' : String(answer.value)}
-                      onChangeText={value => updateAnswerValue(question.id, value)}
-                      placeholder={question.placeholder || 'כתבי מספר'}
-                      placeholderTextColor={COLORS.textMuted}
-                      keyboardType="numeric"
-                      textAlign="right"
-                    />
-                  ) : null}
+                    {question.type === 'number' ? (
+                      <TextInput
+                        style={styles.input}
+                        value={
+                          answer?.value === null || answer?.value === undefined
+                            ? ''
+                            : String(answer.value)
+                        }
+                        onChangeText={value => updateAnswerValue(question.id, value)}
+                        placeholder={question.placeholder || 'כתבי מספר'}
+                        placeholderTextColor={COLORS.textMuted}
+                        keyboardType="numeric"
+                        textAlign="right"
+                      />
+                    ) : null}
 
-                  {(question.type === 'shortText' || question.type === 'longText') ? (
-                    <TextInput
-                      style={[styles.input, question.type === 'longText' && styles.inputLarge]}
-                      value={answer?.value == null ? '' : String(answer.value)}
-                      onChangeText={value => updateAnswerValue(question.id, value)}
-                      placeholder={question.placeholder || 'כתבי תשובה'}
-                      placeholderTextColor={COLORS.textMuted}
-                      multiline={question.type === 'longText'}
-                      numberOfLines={question.type === 'longText' ? 4 : 1}
-                      textAlign="right"
-                      textAlignVertical={question.type === 'longText' ? 'top' : 'center'}
-                    />
-                  ) : null}
-                </View>
-              );
-            })}
+                    {question.type === 'shortText' || question.type === 'longText' ? (
+                      <TextInput
+                        style={[styles.input, question.type === 'longText' && styles.inputLarge]}
+                        value={answer?.value == null ? '' : String(answer.value)}
+                        onChangeText={value => updateAnswerValue(question.id, value)}
+                        placeholder={question.placeholder || 'כתבי תשובה'}
+                        placeholderTextColor={COLORS.textMuted}
+                        multiline={question.type === 'longText'}
+                        numberOfLines={question.type === 'longText' ? 4 : 1}
+                        textAlign="right"
+                        textAlignVertical={question.type === 'longText' ? 'top' : 'center'}
+                      />
+                    ) : null}
+                  </View>
+                );
+              })}
 
-            <Text style={styles.inputLabel}>הערה כללית למאמנת (אופציונלי)</Text>
-            <TextInput
-              style={[styles.input, styles.inputLarge]}
-              placeholder="משהו נוסף שחשוב לך לעדכן"
-              placeholderTextColor={COLORS.textMuted}
-              value={draft.note}
-              onChangeText={value => setDraft(current => ({ ...current, note: value }))}
-              multiline
-              numberOfLines={4}
-              textAlign="right"
-              textAlignVertical="top"
-            />
-          </ScrollView>
+              <Text style={styles.inputLabel}>הערה כללית למאמנת (אופציונלי)</Text>
+              <TextInput
+                style={[styles.input, styles.inputLarge]}
+                placeholder="משהו נוסף שחשוב לך לעדכן"
+                placeholderTextColor={COLORS.textMuted}
+                value={draft.note}
+                onChangeText={value => setDraft(current => ({ ...current, note: value }))}
+                multiline
+                numberOfLines={4}
+                textAlign="right"
+                textAlignVertical="top"
+              />
+            </ScrollView>
 
-          <View style={styles.modalBtns}>
-            <TouchableOpacity style={styles.cancelBtn} onPress={onClose}>
-              <Text style={styles.cancelBtnText}>ביטול</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.submitBtn} onPress={handleSubmit} disabled={saving}>
-              <Text style={styles.submitBtnText}>{saving ? 'שולח...' : 'שלח צ׳ק-אין'}</Text>
-            </TouchableOpacity>
+            <View style={styles.modalBtns}>
+              <TouchableOpacity style={styles.cancelBtn} onPress={onClose}>
+                <Text style={styles.cancelBtnText}>ביטול</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.submitBtn} onPress={handleSubmit} disabled={saving}>
+                <Text style={styles.submitBtnText}>{saving ? 'שולח...' : 'שלח צ׳ק-אין'}</Text>
+              </TouchableOpacity>
+            </View>
           </View>
-        </View>
-      </KeyboardAvoidingView>
+        </KeyboardAvoidingView>
+      </DismissKeyboardView>
     </Modal>
   );
 }
@@ -820,11 +834,9 @@ export default function CoachScreen() {
         animationType="slide"
         onRequestClose={() => setShowAIChat(false)}
       >
-        <KeyboardAvoidingView
-          style={styles.chatModal}
-          behavior={Platform.select({ ios: 'padding', android: 'height' })}
-        >
-          <SafeAreaView style={{ flex: 1 }}>
+        <DismissKeyboardView style={{ flex: 1 }}>
+          <KeyboardAvoidingView style={styles.chatModal} behavior={KEYBOARD_AVOIDING_BEHAVIOR}>
+            <SafeAreaView style={{ flex: 1 }}>
             <View style={styles.chatHeader}>
               <TouchableOpacity onPress={() => setShowAIChat(false)} style={styles.chatClose}>
                 <Ionicons name="close" size={24} color={COLORS.white} />
@@ -835,8 +847,7 @@ export default function CoachScreen() {
             <ScrollView
               style={styles.chatMessages}
               contentContainerStyle={{ padding: 16, gap: 10 }}
-              keyboardShouldPersistTaps="handled"
-              keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
+              keyboardDismissMode={KEYBOARD_DISMISS_MODE}
             >
               {aiMessages.map((msg, i) => (
                 <View
@@ -864,11 +875,15 @@ export default function CoachScreen() {
                 placeholderTextColor={COLORS.textMuted}
                 value={aiMessage}
                 onChangeText={setAiMessage}
+                onSubmitEditing={sendAIMessage}
+                returnKeyType="send"
+                blurOnSubmit={false}
                 textAlign="right"
               />
             </View>
-          </SafeAreaView>
-        </KeyboardAvoidingView>
+            </SafeAreaView>
+          </KeyboardAvoidingView>
+        </DismissKeyboardView>
       </Modal>
     </SafeAreaView>
   );

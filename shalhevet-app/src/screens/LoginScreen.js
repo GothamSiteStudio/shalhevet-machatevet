@@ -8,16 +8,16 @@ import {
   Image,
   ScrollView,
   KeyboardAvoidingView,
-  Platform,
-  Alert,
   ActivityIndicator,
   AccessibilityInfo,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import DismissKeyboardView from '../components/ui/DismissKeyboardView';
 import { COLORS } from '../theme/colors';
 import useStore from '../store/useStore';
 import { authAPI, tokenStorage } from '../services/api';
+import { KEYBOARD_AVOIDING_BEHAVIOR } from '../utils/keyboard';
 
 export default function LoginScreen({ navigation }) {
   const [email, setEmail] = useState('');
@@ -112,15 +112,9 @@ export default function LoginScreen({ navigation }) {
 
   return (
     <SafeAreaView style={styles.safe}>
-      <KeyboardAvoidingView
-        style={{ flex: 1 }}
-        behavior={Platform.select({ ios: 'padding', android: 'height' })}
-      >
-        <ScrollView
-          contentContainerStyle={styles.container}
-          keyboardShouldPersistTaps="handled"
-          showsVerticalScrollIndicator={false}
-        >
+      <DismissKeyboardView style={styles.flex}>
+        <KeyboardAvoidingView style={styles.flex} behavior={KEYBOARD_AVOIDING_BEHAVIOR}>
+          <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
           {/* Logo - decorative, hidden from screen readers */}
           <View
             style={styles.logoContainer}
@@ -322,13 +316,17 @@ export default function LoginScreen({ navigation }) {
               הירשמי עכשיו
             </Text>
           </Text>
-        </ScrollView>
-      </KeyboardAvoidingView>
+          </ScrollView>
+        </KeyboardAvoidingView>
+      </DismissKeyboardView>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
+  flex: {
+    flex: 1,
+  },
   safe: {
     flex: 1,
     backgroundColor: COLORS.background,

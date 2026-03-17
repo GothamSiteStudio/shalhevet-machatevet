@@ -22,6 +22,7 @@ export default function PinnedMenuCard({
   compact = false,
   caption = 'תפריט נעוץ',
   backgroundResizeMode = 'contain',
+  displayHeight = null,
 }) {
   const normalizedMenu = normalizePinnedMenu(menu);
   const updatedAt = formatUpdatedAt(normalizedMenu.updatedAt);
@@ -32,7 +33,14 @@ export default function PinnedMenuCard({
   }
 
   return (
-    <View style={[styles.card, compact && styles.cardCompact]}>
+    <View
+      style={[
+        styles.card,
+        compact && styles.cardCompact,
+        displayHeight ? styles.cardFixedHeight : styles.cardFullWidth,
+        displayHeight ? { height: displayHeight } : null,
+      ]}
+    >
       <Image
         source={menuTemplateImage}
         style={styles.backgroundImage}
@@ -138,10 +146,15 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     overflow: 'hidden',
     position: 'relative',
-    width: '100%',
   },
   cardCompact: {
     borderRadius: 22,
+  },
+  cardFixedHeight: {
+    alignSelf: 'center',
+  },
+  cardFullWidth: {
+    width: '100%',
   },
   content: {
     flex: 1,

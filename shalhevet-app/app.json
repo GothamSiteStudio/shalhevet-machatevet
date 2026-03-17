@@ -22,7 +22,8 @@
         "foregroundImage": "./assets/logo.png",
         "backgroundColor": "#111111"
       },
-      "package": "com.shalhevet.mehatevet"
+      "package": "com.shalhevet.mehatevet",
+      "softwareKeyboardLayoutMode": "pan"
     },
     "plugins": [
       [

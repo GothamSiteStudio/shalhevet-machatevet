@@ -6,7 +6,6 @@ import {
   Image,
   KeyboardAvoidingView,
   Modal,
-  Platform,
   ScrollView,
   StyleSheet,
   Text,
@@ -16,8 +15,9 @@ import {
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
+import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
+import DismissKeyboardView from '../components/ui/DismissKeyboardView';
 import { COLORS } from '../theme/colors';
 import { usersAPI } from '../services/api';
 import {
@@ -29,6 +29,7 @@ import {
   getFoodReferenceText,
 } from '../data/foodDatabase';
 import { getFoodDiaryDateKey, normalizeFoodDiaryEntry } from '../utils/foodDiary';
+import { KEYBOARD_AVOIDING_BEHAVIOR } from '../utils/keyboard';
 
 const MEAL_CONFIG = {
   breakfast: { label: 'ארוחת בוקר', icon: 'sunny-outline', color: '#FFA726' },
@@ -231,11 +232,9 @@ function AddFoodModal({ visible, onClose, onAdd, mealType, recentItems = [] }) {
 
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={resetAndClose}>
-      <KeyboardAvoidingView
-        style={styles.modalOverlay}
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      >
-        <View style={styles.modalContent}>
+      <DismissKeyboardView style={styles.flex}>
+        <KeyboardAvoidingView style={styles.modalOverlay} behavior={KEYBOARD_AVOIDING_BEHAVIOR}>
+          <View style={styles.modalContent}>
           <View style={styles.modalHandle} />
 
           {/* Header */}
@@ -493,8 +492,9 @@ function AddFoodModal({ visible, onClose, onAdd, mealType, recentItems = [] }) {
               </TouchableOpacity>
             </ScrollView>
           )}
-        </View>
-      </KeyboardAvoidingView>
+          </View>
+        </KeyboardAvoidingView>
+      </DismissKeyboardView>
     </Modal>
   );
 }
@@ -860,6 +860,7 @@ export default function FoodDiaryScreen({ navigation }) {
 
 // ─── Styles ─────────────────────────────────────────────
 const styles = StyleSheet.create({
+  flex: { flex: 1 },
   safe: { flex: 1, backgroundColor: COLORS.background },
   container: { paddingHorizontal: 16, paddingBottom: 40 },
   loadingContainer: { alignItems: 'center', flex: 1, gap: 12, justifyContent: 'center' },

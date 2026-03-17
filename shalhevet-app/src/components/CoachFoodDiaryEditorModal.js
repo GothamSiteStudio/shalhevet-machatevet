@@ -3,7 +3,6 @@ import {
   ActivityIndicator,
   KeyboardAvoidingView,
   Modal,
-  Platform,
   ScrollView,
   StyleSheet,
   Text,
@@ -12,12 +11,14 @@ import {
   View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import DismissKeyboardView from './ui/DismissKeyboardView';
 import { COLORS } from '../theme/colors';
 import {
   FOOD_DIARY_MEAL_TYPES,
   getFoodDiaryMealLabel,
   normalizeFoodDiaryEntry,
 } from '../utils/foodDiary';
+import { KEYBOARD_AVOIDING_BEHAVIOR } from '../utils/keyboard';
 
 function createDraftItem() {
   return {
@@ -137,11 +138,9 @@ export default function CoachFoodDiaryEditorModal({ visible, entry, saving, onCl
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <KeyboardAvoidingView
-        style={styles.overlay}
-        behavior={Platform.select({ ios: 'padding', android: 'height' })}
-      >
-        <View style={styles.sheet}>
+      <DismissKeyboardView style={{ flex: 1 }}>
+        <KeyboardAvoidingView style={styles.overlay} behavior={KEYBOARD_AVOIDING_BEHAVIOR}>
+          <View style={styles.sheet}>
           <View style={styles.handle} />
 
           <View style={styles.headerRow}>
@@ -281,20 +280,21 @@ export default function CoachFoodDiaryEditorModal({ visible, entry, saving, onCl
             ))}
           </ScrollView>
 
-          <View style={styles.footer}>
-            <TouchableOpacity style={styles.cancelBtn} onPress={onClose} disabled={saving}>
-              <Text style={styles.cancelBtnText}>ביטול</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.saveBtn} onPress={handleSave} disabled={saving}>
-              {saving ? (
-                <ActivityIndicator color={COLORS.white} />
-              ) : (
-                <Text style={styles.saveBtnText}>שמרי יומן</Text>
-              )}
-            </TouchableOpacity>
+            <View style={styles.footer}>
+              <TouchableOpacity style={styles.cancelBtn} onPress={onClose} disabled={saving}>
+                <Text style={styles.cancelBtnText}>ביטול</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.saveBtn} onPress={handleSave} disabled={saving}>
+                {saving ? (
+                  <ActivityIndicator color={COLORS.white} />
+                ) : (
+                  <Text style={styles.saveBtnText}>שמרי יומן</Text>
+                )}
+              </TouchableOpacity>
+            </View>
           </View>
-        </View>
-      </KeyboardAvoidingView>
+        </KeyboardAvoidingView>
+      </DismissKeyboardView>
     </Modal>
   );
 }

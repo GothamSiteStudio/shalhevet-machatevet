@@ -7,13 +7,15 @@
 import React, { useState } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet,
-  ScrollView, KeyboardAvoidingView, Platform, Alert, ActivityIndicator, AccessibilityInfo,
+  ScrollView, KeyboardAvoidingView, Alert, ActivityIndicator, AccessibilityInfo,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import DismissKeyboardView from '../components/ui/DismissKeyboardView';
 import { COLORS } from '../theme/colors';
 import { authAPI, tokenStorage } from '../services/api';
 import useStore from '../store/useStore';
+import { KEYBOARD_AVOIDING_BEHAVIOR } from '../utils/keyboard';
 
 function parseOptionalNumber(value) {
   const normalized = String(value || '').trim().replace(',', '.');
@@ -146,8 +148,9 @@ export default function RegisterScreen({ navigation }) {
 
   return (
     <SafeAreaView style={styles.safe}>
-      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.select({ ios: 'padding', android: 'height' })}>
-        <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+      <DismissKeyboardView style={styles.flex}>
+        <KeyboardAvoidingView style={styles.flex} behavior={KEYBOARD_AVOIDING_BEHAVIOR}>
+          <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
 
           {/* כותרת */}
           <TouchableOpacity
@@ -420,8 +423,9 @@ export default function RegisterScreen({ navigation }) {
               כניסה
             </Text>
           </Text>
-        </ScrollView>
-      </KeyboardAvoidingView>
+          </ScrollView>
+        </KeyboardAvoidingView>
+      </DismissKeyboardView>
     </SafeAreaView>
   );
 }
@@ -467,6 +471,7 @@ function InputField({
 }
 
 const styles = StyleSheet.create({
+  flex: { flex: 1 },
   safe: { flex: 1, backgroundColor: COLORS.background },
   container: { flexGrow: 1, paddingHorizontal: 24, paddingTop: 20, paddingBottom: 40 },
   backBtn: { alignSelf: 'flex-end', padding: 8, marginBottom: 8 },

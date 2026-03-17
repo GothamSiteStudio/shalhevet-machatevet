@@ -10,14 +10,15 @@ import {
   Image,
   TextInput,
   KeyboardAvoidingView,
-  Platform,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
+import DismissKeyboardView from '../components/ui/DismissKeyboardView';
 import { COLORS } from '../theme/colors';
 import { tokenStorage, usersAPI } from '../services/api';
 import useStore from '../store/useStore';
+import { KEYBOARD_AVOIDING_BEHAVIOR } from '../utils/keyboard';
 
 const GOALS = ['חיטוב', 'עלייה במסת שריר', 'שימור', 'ירידה במשקל', 'אחר'];
 const ACTIVITY_LEVELS = [
@@ -108,49 +109,53 @@ function EditProfileModal({ visible, onClose, user, onSave, saving }) {
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <KeyboardAvoidingView
-        style={styles.modalOverlay}
-        behavior={Platform.select({ ios: 'padding', android: 'height' })}
-      >
-        <View style={styles.modalSheet}>
-          <View style={styles.modalHandle} />
-          <Text style={styles.modalTitle}>עריכת פרטים אישיים</Text>
-          <Text style={styles.inputLabel}>שם</Text>
-          <TextInput
-            style={styles.input}
-            value={name}
-            onChangeText={setName}
-            textAlign="right"
-            placeholderTextColor={COLORS.textMuted}
-          />
-          <Text style={styles.inputLabel}>גיל</Text>
-          <TextInput
-            style={styles.input}
-            value={age}
-            onChangeText={setAge}
-            keyboardType="numeric"
-            textAlign="right"
-            placeholderTextColor={COLORS.textMuted}
-          />
-          <Text style={styles.inputLabel}>גובה (ס"מ)</Text>
-          <TextInput
-            style={styles.input}
-            value={height}
-            onChangeText={setHeight}
-            keyboardType="numeric"
-            textAlign="right"
-            placeholderTextColor={COLORS.textMuted}
-          />
-          <View style={styles.modalBtns}>
-            <TouchableOpacity style={styles.cancelBtn} onPress={onClose}>
-              <Text style={styles.cancelBtnText}>ביטול</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.submitBtn} onPress={handleSave} disabled={saving}>
-              <Text style={styles.submitBtnText}>{saving ? 'שומר...' : 'שמור'}</Text>
-            </TouchableOpacity>
+      <DismissKeyboardView style={styles.flex}>
+        <KeyboardAvoidingView style={styles.modalOverlay} behavior={KEYBOARD_AVOIDING_BEHAVIOR}>
+          <View style={styles.modalSheet}>
+            <View style={styles.modalHandle} />
+            <Text style={styles.modalTitle}>עריכת פרטים אישיים</Text>
+            <ScrollView
+              showsVerticalScrollIndicator={false}
+              contentContainerStyle={styles.modalScrollContent}
+            >
+              <Text style={styles.inputLabel}>שם</Text>
+              <TextInput
+                style={styles.input}
+                value={name}
+                onChangeText={setName}
+                textAlign="right"
+                placeholderTextColor={COLORS.textMuted}
+              />
+              <Text style={styles.inputLabel}>גיל</Text>
+              <TextInput
+                style={styles.input}
+                value={age}
+                onChangeText={setAge}
+                keyboardType="numeric"
+                textAlign="right"
+                placeholderTextColor={COLORS.textMuted}
+              />
+              <Text style={styles.inputLabel}>גובה (ס"מ)</Text>
+              <TextInput
+                style={styles.input}
+                value={height}
+                onChangeText={setHeight}
+                keyboardType="numeric"
+                textAlign="right"
+                placeholderTextColor={COLORS.textMuted}
+              />
+            </ScrollView>
+            <View style={styles.modalBtns}>
+              <TouchableOpacity style={styles.cancelBtn} onPress={onClose}>
+                <Text style={styles.cancelBtnText}>ביטול</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.submitBtn} onPress={handleSave} disabled={saving}>
+                <Text style={styles.submitBtnText}>{saving ? 'שומר...' : 'שמור'}</Text>
+              </TouchableOpacity>
+            </View>
           </View>
-        </View>
-      </KeyboardAvoidingView>
+        </KeyboardAvoidingView>
+      </DismissKeyboardView>
     </Modal>
   );
 }
@@ -182,53 +187,57 @@ function ChangePasswordModal({ visible, onClose, onSave, saving }) {
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <KeyboardAvoidingView
-        style={styles.modalOverlay}
-        behavior={Platform.select({ ios: 'padding', android: 'height' })}
-      >
-        <View style={styles.modalSheet}>
-          <View style={styles.modalHandle} />
-          <Text style={styles.modalTitle}>שינוי סיסמה</Text>
-          <Text style={styles.inputLabel}>סיסמה נוכחית</Text>
-          <TextInput
-            style={styles.input}
-            value={current}
-            onChangeText={setCurrent}
-            secureTextEntry
-            textAlign="right"
-            placeholderTextColor={COLORS.textMuted}
-            placeholder="סיסמה נוכחית"
-          />
-          <Text style={styles.inputLabel}>סיסמה חדשה</Text>
-          <TextInput
-            style={styles.input}
-            value={next}
-            onChangeText={setNext}
-            secureTextEntry
-            textAlign="right"
-            placeholderTextColor={COLORS.textMuted}
-            placeholder="סיסמה חדשה"
-          />
-          <Text style={styles.inputLabel}>אימות סיסמה</Text>
-          <TextInput
-            style={styles.input}
-            value={confirm}
-            onChangeText={setConfirm}
-            secureTextEntry
-            textAlign="right"
-            placeholderTextColor={COLORS.textMuted}
-            placeholder="חזרי על הסיסמה החדשה"
-          />
-          <View style={styles.modalBtns}>
-            <TouchableOpacity style={styles.cancelBtn} onPress={onClose}>
-              <Text style={styles.cancelBtnText}>ביטול</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.submitBtn} onPress={handleSave} disabled={saving}>
-              <Text style={styles.submitBtnText}>{saving ? 'שומר...' : 'שמור'}</Text>
-            </TouchableOpacity>
+      <DismissKeyboardView style={styles.flex}>
+        <KeyboardAvoidingView style={styles.modalOverlay} behavior={KEYBOARD_AVOIDING_BEHAVIOR}>
+          <View style={styles.modalSheet}>
+            <View style={styles.modalHandle} />
+            <Text style={styles.modalTitle}>שינוי סיסמה</Text>
+            <ScrollView
+              showsVerticalScrollIndicator={false}
+              contentContainerStyle={styles.modalScrollContent}
+            >
+              <Text style={styles.inputLabel}>סיסמה נוכחית</Text>
+              <TextInput
+                style={styles.input}
+                value={current}
+                onChangeText={setCurrent}
+                secureTextEntry
+                textAlign="right"
+                placeholderTextColor={COLORS.textMuted}
+                placeholder="סיסמה נוכחית"
+              />
+              <Text style={styles.inputLabel}>סיסמה חדשה</Text>
+              <TextInput
+                style={styles.input}
+                value={next}
+                onChangeText={setNext}
+                secureTextEntry
+                textAlign="right"
+                placeholderTextColor={COLORS.textMuted}
+                placeholder="סיסמה חדשה"
+              />
+              <Text style={styles.inputLabel}>אימות סיסמה</Text>
+              <TextInput
+                style={styles.input}
+                value={confirm}
+                onChangeText={setConfirm}
+                secureTextEntry
+                textAlign="right"
+                placeholderTextColor={COLORS.textMuted}
+                placeholder="חזרי על הסיסמה החדשה"
+              />
+            </ScrollView>
+            <View style={styles.modalBtns}>
+              <TouchableOpacity style={styles.cancelBtn} onPress={onClose}>
+                <Text style={styles.cancelBtnText}>ביטול</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.submitBtn} onPress={handleSave} disabled={saving}>
+                <Text style={styles.submitBtnText}>{saving ? 'שומר...' : 'שמור'}</Text>
+              </TouchableOpacity>
+            </View>
           </View>
-        </View>
-      </KeyboardAvoidingView>
+        </KeyboardAvoidingView>
+      </DismissKeyboardView>
     </Modal>
   );
 }
@@ -537,6 +546,7 @@ export default function ProfileScreen() {
 }
 
 const styles = StyleSheet.create({
+  flex: { flex: 1 },
   safe: { flex: 1, backgroundColor: COLORS.background },
   container: { paddingHorizontal: 16, paddingBottom: 40 },
   pageTitle: {
@@ -640,6 +650,7 @@ const styles = StyleSheet.create({
   settingValue: { color: COLORS.textSecondary, fontSize: 12, marginBottom: 1 },
   version: { color: COLORS.textMuted, fontSize: 12, textAlign: 'center', marginTop: 8 },
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'flex-end' },
+  modalScrollContent: { paddingBottom: 8 },
   modalSheet: {
     backgroundColor: COLORS.card,
     borderTopLeftRadius: 24,
