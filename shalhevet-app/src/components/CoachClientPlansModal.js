@@ -964,6 +964,7 @@ function SummaryChip({ label, value, color = COLORS.primary }) {
 
 export default function CoachClientPlansModal({ visible, clientId, onClose, onSaved }) {
   const pinnedMenuExportRef = useRef(null);
+  const contentScrollRef = useRef(null);
   const [activeTab, setActiveTab] = useState('goals');
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -1149,6 +1150,12 @@ export default function CoachClientPlansModal({ visible, clientId, onClose, onSa
       setActiveTab('goals');
     }
   }, [visible, clientId, loadClient, resetForms]);
+
+  useEffect(() => {
+    if (visible && !loading) {
+      contentScrollRef.current?.scrollTo({ y: 0, animated: false });
+    }
+  }, [visible, loading, clientId]);
 
   const updateGoalField = (field, value) => {
     setGoalsForm(current => ({ ...current, [field]: value }));
@@ -3841,6 +3848,11 @@ export default function CoachClientPlansModal({ visible, clientId, onClose, onSa
     return 'שמרי תוכנית';
   };
 
+  const handleTabPress = tabId => {
+    contentScrollRef.current?.scrollTo({ y: 0, animated: true });
+    setActiveTab(tabId);
+  };
+
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <DismissKeyboardView style={{ flex: 1 }}>
@@ -3866,54 +3878,12 @@ export default function CoachClientPlansModal({ visible, clientId, onClose, onSa
             </View>
           ) : (
             <>
-              <View style={styles.clientHero}>
-                <View style={styles.clientHeroHeader}>
-                  <View
-                    style={[
-                      styles.statusPill,
-                      { backgroundColor: client?.isActive ? '#2E7D3233' : '#B71C1C33' },
-                    ]}
-                  >
-                    <Text
-                      style={[
-                        styles.statusPillText,
-                        { color: client?.isActive ? '#4CAF50' : '#F44336' },
-                      ]}
-                    >
-                      {client?.isActive ? 'לקוחה פעילה' : 'לא פעילה'}
-                    </Text>
-                  </View>
-                  <View style={styles.clientHeroText}>
-                    <Text style={styles.clientHeroName}>{client?.name || ''}</Text>
-                    <Text style={styles.clientHeroSub}>{client?.email || ''}</Text>
-                    <Text style={styles.clientHeroSub}>{client?.phone || 'ללא מספר טלפון'}</Text>
-                  </View>
-                </View>
-                <View style={styles.summaryChipsRow}>
-                  <SummaryChip
-                    label="משקל"
-                    value={client?.weight ? `${client.weight} ק"ג` : '—'}
-                    color={COLORS.primary}
-                  />
-                  <SummaryChip
-                    label="מטרה כללית"
-                    value={client?.goal || '—'}
-                    color={COLORS.accent}
-                  />
-                  <SummaryChip
-                    label="גובה"
-                    value={client?.height ? `${client.height} ס"מ` : '—'}
-                    color={COLORS.info}
-                  />
-                </View>
-              </View>
-
               <View style={styles.tabsRow}>
                 {TABS.map(tab => (
                   <TouchableOpacity
                     key={tab.id}
                     style={[styles.tabBtn, activeTab === tab.id && styles.tabBtnActive]}
-                    onPress={() => setActiveTab(tab.id)}
+                    onPress={() => handleTabPress(tab.id)}
                   >
                     <Ionicons
                       name={tab.icon}
@@ -3930,12 +3900,55 @@ export default function CoachClientPlansModal({ visible, clientId, onClose, onSa
               </View>
 
               <ScrollView
+                ref={contentScrollRef}
                 style={styles.contentScroll}
                 contentContainerStyle={styles.contentContainer}
                 showsVerticalScrollIndicator={false}
                 keyboardShouldPersistTaps="handled"
                 keyboardDismissMode={KEYBOARD_DISMISS_MODE}
               >
+                <View style={[styles.clientHero, styles.clientHeroScrollable]}>
+                  <View style={styles.clientHeroHeader}>
+                    <View
+                      style={[
+                        styles.statusPill,
+                        { backgroundColor: client?.isActive ? '#2E7D3233' : '#B71C1C33' },
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          styles.statusPillText,
+                          { color: client?.isActive ? '#4CAF50' : '#F44336' },
+                        ]}
+                      >
+                        {client?.isActive ? 'לקוחה פעילה' : 'לא פעילה'}
+                      </Text>
+                    </View>
+                    <View style={styles.clientHeroText}>
+                      <Text style={styles.clientHeroName}>{client?.name || ''}</Text>
+                      <Text style={styles.clientHeroSub}>{client?.email || ''}</Text>
+                      <Text style={styles.clientHeroSub}>{client?.phone || 'ללא מספר טלפון'}</Text>
+                    </View>
+                  </View>
+                  <View style={styles.summaryChipsRow}>
+                    <SummaryChip
+                      label="משקל"
+                      value={client?.weight ? `${client.weight} ק"ג` : '—'}
+                      color={COLORS.primary}
+                    />
+                    <SummaryChip
+                      label="מטרה כללית"
+                      value={client?.goal || '—'}
+                      color={COLORS.accent}
+                    />
+                    <SummaryChip
+                      label="גובה"
+                      value={client?.height ? `${client.height} ס"מ` : '—'}
+                      color={COLORS.info}
+                    />
+                  </View>
+                </View>
+
                 {activeTab === 'account' ? renderAccountTab() : null}
                 {activeTab === 'goals' ? renderGoalsTab() : null}
                 {activeTab === 'nutrition' ? renderNutritionTab() : null}
@@ -4263,6 +4276,9 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     marginBottom: 12,
     padding: 14,
+  },
+  clientHeroScrollable: {
+    marginBottom: 0,
   },
   clientHeroHeader: {
     alignItems: 'flex-start',
