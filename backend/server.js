@@ -98,6 +98,7 @@ app.use(morgan(process.env.NODE_ENV === "production" ? "combined" : "dev"));
 const authRoutes = require("./routes/auth");
 const usersRoutes = require("./routes/users");
 const coachRoutes = require("./routes/coach");
+const { initDB } = require("./utils/db");
 
 app.use("/api/auth", authRoutes); // /api/auth/login, /api/auth/register
 app.use("/api/users", usersRoutes); // /api/users/me, /api/users/weight
@@ -152,11 +153,23 @@ app.use((err, req, res, _next) => {
 });
 
 // ─── הפעל שרת ──────────────────────────────────────────────────────────────
-app.listen(PORT, () => {
-  console.log(`\n🔥 שרת שלהבת מחטבת פועל!`);
-  console.log(`📍 כתובת: http://localhost:${PORT}`);
-  console.log(`🌍 סביבה: ${process.env.NODE_ENV || "development"}`);
-  console.log(`🔒 אבטחה: helmet=${!!helmet}, rate-limit=${!!rateLimit}\n`);
-});
+async function startServer() {
+  try {
+    await initDB();
+
+    app.listen(PORT, () => {
+      console.log(`\n🔥 שרת שלהבת מחטבת פועל!`);
+      console.log(`📍 כתובת: http://localhost:${PORT}`);
+      console.log(`🌍 סביבה: ${process.env.NODE_ENV || "development"}`);
+      console.log(`🔒 אבטחה: helmet=${!!helmet}, rate-limit=${!!rateLimit}`);
+      console.log(`🗄️  סכמת PostgreSQL סונכרנה בהצלחה\n`);
+    });
+  } catch (error) {
+    console.error("❌ אתחול מסד הנתונים נכשל:", error.message);
+    process.exit(1);
+  }
+}
+
+startServer();
 
 module.exports = app;

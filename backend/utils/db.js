@@ -237,6 +237,23 @@ function normalizeNutritionMeals(value) {
   }));
 }
 
+function normalizePinnedMenuData(value) {
+  const source =
+    value && typeof value === "object" && !Array.isArray(value) ? value : {};
+
+  return {
+    title: String(source.title || "").trim(),
+    periodLabel: String(source.periodLabel || source.subtitle || "").trim(),
+    bodyText: String(source.bodyText || source.text || "").trim(),
+    mode: source.mode === "auto" ? "auto" : "freeform",
+    updatedAt: source.updatedAt ? toIsoString(source.updatedAt) : "",
+  };
+}
+
+function hasPinnedMenuContent(menu) {
+  return Boolean(menu?.title || menu?.periodLabel || menu?.bodyText);
+}
+
 function normalizeNutritionPlanData(value) {
   const source =
     value && typeof value === "object" && !Array.isArray(value) ? value : {};
@@ -246,6 +263,9 @@ function normalizeNutritionPlanData(value) {
     notes: String(source.notes || "").trim(),
     dailyTargets: normalizeNutritionTargets(source.dailyTargets || {}),
     meals: normalizeNutritionMeals(source.meals || []),
+    pinnedMenu: normalizePinnedMenuData(
+      source.pinnedMenu || source.pinned_menu || {},
+    ),
   };
 }
 
@@ -310,6 +330,7 @@ function hasNutritionPlanContent(plan) {
     plan.title ||
       plan.notes ||
       (Array.isArray(plan.meals) && plan.meals.length > 0) ||
+      hasPinnedMenuContent(plan.pinnedMenu) ||
       Object.values(plan.dailyTargets || {}).some(
         (value) => value !== null && value !== undefined,
       ),
@@ -439,6 +460,7 @@ function mapNutritionPlan(row) {
     notes: row.notes,
     dailyTargets: row.daily_targets || {},
     meals: row.meals || [],
+    pinnedMenu: row.pinned_menu || {},
   });
 
   return {
@@ -1010,16 +1032,17 @@ async function upsertNutritionPlan(userId, planData) {
   const result = await query(
     `
       INSERT INTO nutrition_plans (
-        id, user_id, title, notes, daily_targets, meals,
+        id, user_id, title, notes, daily_targets, meals, pinned_menu,
         updated_by, created_at, updated_at
       )
-      VALUES ($1, $2, $3, $4, $5::jsonb, $6::jsonb, $7, $8, $9)
+      VALUES ($1, $2, $3, $4, $5::jsonb, $6::jsonb, $7::jsonb, $8, $9, $10)
       ON CONFLICT (user_id) DO UPDATE SET
         id = EXCLUDED.id,
         title = EXCLUDED.title,
         notes = EXCLUDED.notes,
         daily_targets = EXCLUDED.daily_targets,
         meals = EXCLUDED.meals,
+        pinned_menu = EXCLUDED.pinned_menu,
         updated_by = EXCLUDED.updated_by,
         updated_at = EXCLUDED.updated_at
       RETURNING *
@@ -1031,6 +1054,9 @@ async function upsertNutritionPlan(userId, planData) {
       nextPlan.notes || "",
       JSON.stringify(nextPlan.dailyTargets || {}),
       JSON.stringify(nextPlan.meals || []),
+      JSON.stringify(
+        hasPinnedMenuContent(nextPlan.pinnedMenu) ? nextPlan.pinnedMenu : {},
+      ),
       nextPlan.updatedBy || null,
       toIsoString(nextPlan.createdAt),
       toIsoString(nextPlan.updatedAt),

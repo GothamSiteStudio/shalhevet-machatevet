@@ -18,6 +18,8 @@ import { COLORS } from '../theme/colors';
 import useStore from '../store/useStore';
 import { usersAPI } from '../services/api';
 import { getFoodDiaryDateKey, normalizeFoodDiaryEntry } from '../utils/foodDiary';
+import { hasPinnedMenuContent, normalizePinnedMenu } from '../utils/pinnedMenu';
+import PinnedMenuCard from '../components/PinnedMenuCard';
 
 function toNumber(value) {
   const parsed = Number(value);
@@ -77,6 +79,7 @@ function normalizeNutritionPlan(plan) {
       fat: toNumber(plan.dailyTargets?.fat),
       waterLiters: toNumber(plan.dailyTargets?.waterLiters),
     },
+    pinnedMenu: normalizePinnedMenu(plan.pinnedMenu),
     meals: Array.isArray(plan.meals) ? plan.meals.map(normalizeMeal) : [],
   };
 }
@@ -379,6 +382,12 @@ export default function NutritionScreen({ navigation }) {
           </View>
         ) : null}
 
+        {hasPinnedMenuContent(nutritionPlan?.pinnedMenu) ? (
+          <View style={styles.pinnedMenuSection}>
+            <PinnedMenuCard menu={nutritionPlan.pinnedMenu} caption="התפריט הנעוץ שלך" />
+          </View>
+        ) : null}
+
         {nutritionPlan ? (
           <View style={styles.planCard}>
             <View style={styles.planHeaderRow}>
@@ -650,6 +659,9 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     marginBottom: 14,
     padding: 16,
+  },
+  pinnedMenuSection: {
+    marginBottom: 14,
   },
   planHeaderRow: { alignItems: 'center', flexDirection: 'row-reverse', gap: 10 },
   planHeaderText: { alignItems: 'flex-end', flex: 1 },

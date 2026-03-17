@@ -834,6 +834,26 @@ function buildNutritionMeals(meals) {
   });
 }
 
+function buildPinnedMenuPayload(value) {
+  const source =
+    value && typeof value === "object" && !Array.isArray(value) ? value : {};
+  const payload = {
+    title: parseOptionalText(source.title) || "",
+    periodLabel: parseOptionalText(source.periodLabel || source.subtitle) || "",
+    bodyText: parseOptionalText(source.bodyText || source.text) || "",
+    mode: source.mode === "auto" ? "auto" : "freeform",
+  };
+
+  if (!payload.title && !payload.periodLabel && !payload.bodyText) {
+    return {};
+  }
+
+  return {
+    ...payload,
+    updatedAt: new Date().toISOString(),
+  };
+}
+
 function buildNutritionPlanPayload(body) {
   const payload = {};
 
@@ -843,6 +863,8 @@ function buildNutritionPlanPayload(body) {
   if ("dailyTargets" in body)
     payload.dailyTargets = buildNutritionTargets(body.dailyTargets || {});
   if ("meals" in body) payload.meals = buildNutritionMeals(body.meals);
+  if ("pinnedMenu" in body)
+    payload.pinnedMenu = buildPinnedMenuPayload(body.pinnedMenu);
 
   return payload;
 }

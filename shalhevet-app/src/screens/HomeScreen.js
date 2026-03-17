@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   View,
   Text,
@@ -20,10 +21,13 @@ import { COLORS } from '../theme/colors';
 import { usersAPI } from '../services/api';
 import useStore from '../store/useStore';
 import { getFoodDiaryDateKey, normalizeFoodDiaryEntry } from '../utils/foodDiary';
+import { hasPinnedMenuContent, normalizePinnedMenu } from '../utils/pinnedMenu';
+import PinnedMenuCard from '../components/PinnedMenuCard';
 import { Button, Skeleton, FadeInView } from '../components/ui';
 
 const { width } = Dimensions.get('window');
 const CARD_SIZE = (width - 48 - 16) / 2;
+const LAST_SEEN_PINNED_MENU_KEY = 'last_seen_pinned_menu_updated_at';
 
 const getGreeting = () => {
   const h = new Date().getHours();
@@ -253,6 +257,7 @@ export default function HomeScreen({ navigation }) {
   const user = useStore(s => s.user);
   const updateUser = useStore(s => s.updateUser);
   const [showWeightModal, setShowWeightModal] = useState(false);
+  const [pinnedMenu, setPinnedMenu] = useState(null);
   const [calorieSummary, setCalorieSummary] = useState({
     loading: true,
     targetCalories: 0,
@@ -261,6 +266,36 @@ export default function HomeScreen({ navigation }) {
     hasTarget: false,
     error: '',
   });
+
+  const maybeShowPinnedMenuAlert = useCallback(
+    async menu => {
+      const normalizedMenu = normalizePinnedMenu(menu);
+
+      if (!hasPinnedMenuContent(normalizedMenu) || !normalizedMenu.updatedAt) {
+        return;
+      }
+
+      const lastSeenUpdatedAt = await AsyncStorage.getItem(LAST_SEEN_PINNED_MENU_KEY);
+      if (lastSeenUpdatedAt === normalizedMenu.updatedAt) {
+        return;
+      }
+
+      await AsyncStorage.setItem(LAST_SEEN_PINNED_MENU_KEY, normalizedMenu.updatedAt);
+
+      Alert.alert(
+        'תפריט חדש משלהבת',
+        `${normalizedMenu.title || 'תפריט אישי'} עודכן ונמצא עכשיו בנעוץ שלך.`,
+        [
+          { text: 'אחר כך', style: 'cancel' },
+          {
+            text: 'פתחי עכשיו',
+            onPress: () => navigation.navigate('Nutrition'),
+          },
+        ]
+      );
+    },
+    [navigation]
+  );
 
   const loadCalorieSummary = useCallback(async () => {
     const todayDateKey = getFoodDiaryDateKey();
@@ -275,6 +310,9 @@ export default function HomeScreen({ navigation }) {
     }
 
     const nutritionPlan = planResult.status === 'fulfilled' ? planResult.value.nutritionPlan : null;
+    const nextPinnedMenu = hasPinnedMenuContent(nutritionPlan?.pinnedMenu)
+      ? normalizePinnedMenu(nutritionPlan.pinnedMenu)
+      : null;
     const diaryEntry =
       diaryResult.status === 'fulfilled'
         ? normalizeFoodDiaryEntry(diaryResult.value.entry, todayDateKey)
@@ -291,6 +329,11 @@ export default function HomeScreen({ navigation }) {
             ? diaryResult.reason?.message || 'לא ניתן לטעון את יומן האכילה'
             : '';
 
+    setPinnedMenu(nextPinnedMenu);
+    if (nextPinnedMenu) {
+      void maybeShowPinnedMenuAlert(nextPinnedMenu);
+    }
+
     setCalorieSummary({
       loading: false,
       targetCalories,
@@ -299,7 +342,7 @@ export default function HomeScreen({ navigation }) {
       hasTarget,
       error,
     });
-  }, [updateUser]);
+  }, [maybeShowPinnedMenuAlert, updateUser]);
 
   useFocusEffect(
     useCallback(() => {
@@ -377,6 +420,32 @@ export default function HomeScreen({ navigation }) {
             <Text style={styles.statLabel}>מאמנת</Text>
           </View>
         </View>
+
+        {hasPinnedMenuContent(pinnedMenu) ? (
+          <TouchableOpacity
+            style={styles.pinnedMenuCard}
+            onPress={() => navigation.navigate('Nutrition')}
+            activeOpacity={0.88}
+            accessible={true}
+            accessibilityLabel="כרטיס תפריט נעוץ מהמאמנת"
+            accessibilityHint="מעבר למסך התזונה לצפייה בתפריט המלא"
+          >
+            <View style={styles.pinnedMenuHeader}>
+              <Ionicons name="chevron-back" size={18} color={COLORS.textSecondary} />
+              <View style={styles.pinnedMenuHeaderText}>
+                <Text style={styles.pinnedMenuTitle}>נעוץ מהמאמנת</Text>
+                <Text style={styles.pinnedMenuSubtitle}>
+                  התפריט האחרון ששלהבת עדכנה עבורך
+                </Text>
+              </View>
+              <View style={styles.pinnedMenuIconWrap}>
+                <Ionicons name="pin" size={18} color={COLORS.primary} />
+              </View>
+            </View>
+
+            <PinnedMenuCard menu={pinnedMenu} compact caption="נעוץ מהמאמנת" />
+          </TouchableOpacity>
+        ) : null}
 
         <TouchableOpacity
           style={styles.calorieCard}
@@ -546,6 +615,45 @@ const styles = StyleSheet.create({
     borderColor: COLORS.border,
     marginBottom: 20,
     padding: 16,
+  },
+  pinnedMenuCard: {
+    backgroundColor: COLORS.card,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    marginBottom: 20,
+    padding: 16,
+  },
+  pinnedMenuHeader: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 14,
+  },
+  pinnedMenuHeaderText: {
+    alignItems: 'flex-end',
+    flex: 1,
+  },
+  pinnedMenuTitle: {
+    color: COLORS.white,
+    fontSize: 16,
+    fontWeight: '700',
+    textAlign: 'right',
+  },
+  pinnedMenuSubtitle: {
+    color: COLORS.textSecondary,
+    fontSize: 12,
+    marginTop: 3,
+    textAlign: 'right',
+  },
+  pinnedMenuIconWrap: {
+    alignItems: 'center',
+    backgroundColor: COLORS.primary + '18',
+    borderRadius: 12,
+    height: 42,
+    justifyContent: 'center',
+    marginLeft: 12,
+    width: 42,
   },
   calorieHeader: {
     alignItems: 'center',

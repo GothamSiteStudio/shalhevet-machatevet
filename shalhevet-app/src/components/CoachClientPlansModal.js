@@ -1,4 +1,6 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import * as MediaLibrary from 'expo-media-library';
+import * as Sharing from 'expo-sharing';
 import {
   ActivityIndicator,
   Alert,
@@ -14,6 +16,7 @@ import {
   View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import ViewShot from 'react-native-view-shot';
 import { COLORS } from '../theme/colors';
 import { coachAPI } from '../services/api';
 import { RECIPE_CATALOG, createNutritionMealFromRecipe } from '../data/recipeCatalog';
@@ -23,7 +26,15 @@ import {
   getFoodDiaryMealLabel,
   normalizeFoodDiaryEntry,
 } from '../utils/foodDiary';
+import {
+  buildAutomaticPinnedMenuFromNutrition,
+  createEmptyPinnedMenu,
+  hasPinnedMenuContent,
+  normalizePinnedMenu,
+  serializePinnedMenu,
+} from '../utils/pinnedMenu';
 import CoachFoodDiaryEditorModal from './CoachFoodDiaryEditorModal';
+import PinnedMenuCard, { PINNED_MENU_TEMPLATE_ASPECT_RATIO } from './PinnedMenuCard';
 
 const TABS = [
   { id: 'account', label: 'חשבון', icon: 'key-outline' },
@@ -207,6 +218,7 @@ function hasNutritionTemplateContent(plan) {
     plan.title.trim() ||
       plan.notes.trim() ||
       plan.meals.length > 0 ||
+      hasPinnedMenuContent(plan.pinnedMenu) ||
       Object.values(plan.dailyTargets || {}).some(hasMeaningfulValue)
   );
 }
@@ -286,8 +298,11 @@ function getNutritionTemplateSummary(template) {
   const calorieTarget = hasMeaningfulValue(template.dailyTargets?.calories)
     ? `${template.dailyTargets.calories} קל׳`
     : 'ללא יעד קלורי';
+  const pinnedMenuSummary = hasPinnedMenuContent(template.pinnedMenu) ? 'תפריט נעוץ מוכן' : '';
 
-  return `${template.title || 'תוכנית תזונה'} · ${mealCount} ארוחות · ${calorieTarget}`;
+  return [template.title || 'תוכנית תזונה', `${mealCount} ארוחות`, calorieTarget, pinnedMenuSummary]
+    .filter(Boolean)
+    .join(' · ');
 }
 
 function getWorkoutTemplateSummary(template) {
@@ -368,6 +383,7 @@ function createEmptyNutritionForm() {
       fat: '',
       waterLiters: '',
     },
+    pinnedMenu: createEmptyPinnedMenu(),
     meals: [],
   };
 }
@@ -446,6 +462,7 @@ function mapNutritionToForm(plan) {
       fat: toInputValue(plan.dailyTargets?.fat),
       waterLiters: toInputValue(plan.dailyTargets?.waterLiters),
     },
+    pinnedMenu: normalizePinnedMenu(plan.pinnedMenu),
     meals: Array.isArray(plan.meals)
       ? plan.meals.map(meal => ({
           id: meal.id || makeId('meal'),
@@ -731,6 +748,7 @@ function serializeNutrition(form) {
       fat: form.dailyTargets.fat,
       waterLiters: form.dailyTargets.waterLiters,
     },
+    pinnedMenu: serializePinnedMenu(form.pinnedMenu),
     meals: form.meals.map(meal => ({
       id: meal.id,
       name: meal.name.trim(),
@@ -937,9 +955,12 @@ function SummaryChip({ label, value, color = COLORS.primary }) {
 }
 
 export default function CoachClientPlansModal({ visible, clientId, onClose, onSaved }) {
+  const pinnedMenuCaptureRef = useRef(null);
   const [activeTab, setActiveTab] = useState('goals');
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [exportingPinnedMenu, setExportingPinnedMenu] = useState(false);
+  const [sharingPinnedMenu, setSharingPinnedMenu] = useState(false);
   const [foodDiarySaving, setFoodDiarySaving] = useState(false);
   const [sendingAutomationReminder, setSendingAutomationReminder] = useState(false);
   const [quickMessageTemplates, setQuickMessageTemplates] = useState([]);
@@ -989,6 +1010,8 @@ export default function CoachClientPlansModal({ visible, clientId, onClose, onSa
     setPlanTemplateBusyKey('');
     setSendingQuickMessageId(null);
     setSendingAutomationReminder(false);
+    setExportingPinnedMenu(false);
+    setSharingPinnedMenu(false);
   }, []);
 
   const queryMatchedRecipes = RECIPE_CATALOG.filter(recipe => {
@@ -1044,6 +1067,8 @@ export default function CoachClientPlansModal({ visible, clientId, onClose, onSa
 
   const currentClientType = normalizeClientTypeLabel(accountForm.clientType);
   const activePlanTemplateProfile = findPlanTemplateProfile(planTemplateProfiles, currentClientType);
+  const pinnedMenuDraft = normalizePinnedMenu(nutritionForm.pinnedMenu);
+  const hasPinnedMenuDraft = hasPinnedMenuContent(pinnedMenuDraft);
 
   const loadClient = useCallback(async () => {
     if (!clientId) return;
@@ -1129,6 +1154,139 @@ export default function CoachClientPlansModal({ visible, clientId, onClose, onSa
       ...current,
       dailyTargets: { ...current.dailyTargets, [field]: value },
     }));
+  };
+
+  const updatePinnedMenuField = (field, value) => {
+    setNutritionForm(current => ({
+      ...current,
+      pinnedMenu: {
+        ...normalizePinnedMenu(current.pinnedMenu),
+        [field]: value,
+      },
+    }));
+  };
+
+  const handleGeneratePinnedMenuDraft = () => {
+    const generatedMenu = buildAutomaticPinnedMenuFromNutrition(nutritionForm, {
+      title: pinnedMenuDraft.title || nutritionForm.title,
+      periodLabel: pinnedMenuDraft.periodLabel || 'תפריט יומי',
+    });
+
+    if (!hasPinnedMenuContent(generatedMenu)) {
+      Alert.alert(
+        'אין מספיק תוכן ליצירה אוטומטית',
+        'כדי ליצור תפריט אוטומטי צריך לפחות ארוחה אחת, יעד יומי או הערות כלליות.'
+      );
+      return;
+    }
+
+    setNutritionForm(current => ({
+      ...current,
+      pinnedMenu: generatedMenu,
+    }));
+
+    Alert.alert(
+      'טיוטת תפריט מוכנה',
+      'יצרתי טיוטה אוטומטית. אפשר לערוך כאן או לשמור אותה כמו שהיא למתאמנת.'
+    );
+  };
+
+  const handleSwitchToFreeformPinnedMenu = () => {
+    setNutritionForm(current => {
+      const currentPinnedMenu = normalizePinnedMenu(current.pinnedMenu);
+
+      return {
+        ...current,
+        pinnedMenu: {
+          ...currentPinnedMenu,
+          mode: 'freeform',
+          title: currentPinnedMenu.title || current.title || 'תפריט אישי',
+        },
+      };
+    });
+  };
+
+  const clearPinnedMenuDraft = () => {
+    setNutritionForm(current => ({
+      ...current,
+      pinnedMenu: createEmptyPinnedMenu(),
+    }));
+  };
+
+  const capturePinnedMenuPreview = async () => {
+    if (!hasPinnedMenuDraft) {
+      throw new Error('אין עדיין תפריט מוכן להורדה.');
+    }
+
+    const captureHandle = pinnedMenuCaptureRef.current;
+
+    if (!captureHandle || typeof captureHandle.capture !== 'function') {
+      throw new Error('התצוגה המקדימה עדיין נטענת. נסי שוב בעוד רגע.');
+    }
+
+    const exportWidth = 1440;
+    const exportHeight = Math.round(exportWidth / PINNED_MENU_TEMPLATE_ASPECT_RATIO);
+
+    return captureHandle.capture({
+      format: 'png',
+      height: exportHeight,
+      quality: 1,
+      result: 'tmpfile',
+      width: exportWidth,
+    });
+  };
+
+  const handleDownloadPinnedMenu = async () => {
+    setExportingPinnedMenu(true);
+
+    try {
+      const permission = await MediaLibrary.requestPermissionsAsync();
+
+      if (!permission.granted) {
+        throw new Error('כדי להוריד את התפריט צריך לאשר גישה לתמונות במכשיר.');
+      }
+
+      const imageUri = await capturePinnedMenuPreview();
+      const asset = await MediaLibrary.createAssetAsync(imageUri);
+
+      if (Platform.OS === 'android') {
+        const existingAlbum = await MediaLibrary.getAlbumAsync('Shalhevet');
+
+        if (existingAlbum) {
+          await MediaLibrary.addAssetsToAlbumAsync([asset], existingAlbum, false);
+        } else {
+          await MediaLibrary.createAlbumAsync('Shalhevet', asset, false);
+        }
+      }
+
+      Alert.alert('נשמר לגלריה', 'התפריט נשמר כתמונה במכשיר עם הטמפלייט המלא.');
+    } catch (err) {
+      Alert.alert('לא הצלחנו להוריד את התפריט', err.message || 'נסי שוב בעוד רגע.');
+    } finally {
+      setExportingPinnedMenu(false);
+    }
+  };
+
+  const handleSharePinnedMenu = async () => {
+    setSharingPinnedMenu(true);
+
+    try {
+      const shareSupported = await Sharing.isAvailableAsync();
+
+      if (!shareSupported) {
+        throw new Error('שיתוף תמונה לא זמין כרגע במכשיר הזה.');
+      }
+
+      const imageUri = await capturePinnedMenuPreview();
+      await Sharing.shareAsync(imageUri, {
+        dialogTitle: 'שיתוף התפריט',
+        mimeType: 'image/png',
+      });
+    } catch (err) {
+      Alert.alert('לא הצלחנו לשתף את התפריט', err.message || 'נסי שוב בעוד רגע.');
+    } finally {
+      setSharingPinnedMenu(false);
+    }
   };
 
   const addMeal = () => {
@@ -1688,7 +1846,12 @@ export default function CoachClientPlansModal({ visible, clientId, onClose, onSa
           serializeNutrition(nutritionForm)
         );
         setNutritionForm(mapNutritionToForm(result.nutritionPlan));
-        Alert.alert('✅ נשמר', 'תוכנית התזונה עודכנה בהצלחה');
+        Alert.alert(
+          '✅ נשמר',
+          hasPinnedMenuContent(result.nutritionPlan?.pinnedMenu)
+            ? 'תוכנית התזונה והתפריט הנעוץ עודכנו בהצלחה.'
+            : 'תוכנית התזונה עודכנה בהצלחה'
+        );
       }
 
       if (activeTab === 'workout') {
@@ -2467,10 +2630,166 @@ export default function CoachClientPlansModal({ visible, clientId, onClose, onSa
       <View style={styles.accountInfoBox}>
         <Ionicons name="information-circle-outline" size={18} color={COLORS.info} />
         <Text style={styles.accountInfoText}>
-          כדי לעדכן תזונה ללקוחה: הוסיפי ארוחות מהמאגר שלך או מספריית המתכונים, ערכי לפי הצורך, ואז
-          לחצי על שמרי תזונה. אחרי השמירה התוכנית מתעדכנת מייד במסך התזונה של הלקוחה.
+          כדי לעדכן תזונה ללקוחה: הוסיפי ארוחות מהמאגר שלך או מספריית המתכונים, ערכי לפי הצורך,
+          צרי גם תפריט נעוץ אם צריך, ואז לחצי על שמרי תזונה. אחרי השמירה התוכנית והתפריט מתעדכנים
+          מייד בדף הבית ובמסך התזונה של הלקוחה.
         </Text>
       </View>
+
+      <SectionCard
+        title="תפריט נעוץ למתאמנת"
+        subtitle="יופיע בראש מסך התזונה על גבי הטמפלט שהעלית"
+        icon="pin-outline"
+      >
+        <View style={styles.summaryChipsRow}>
+          <SummaryChip
+            label="סטטוס"
+            value={hasPinnedMenuDraft ? 'מוכן להצגה' : 'עדיין ריק'}
+            color={hasPinnedMenuDraft ? COLORS.success : COLORS.warning}
+          />
+          <SummaryChip
+            label="דרך יצירה"
+            value={pinnedMenuDraft.mode === 'auto' ? 'אוטומטי' : 'חופשי'}
+            color={pinnedMenuDraft.mode === 'auto' ? COLORS.primary : COLORS.info}
+          />
+          <SummaryChip
+            label="כותרת"
+            value={pinnedMenuDraft.title || 'תפריט אישי'}
+            color={COLORS.accent}
+          />
+        </View>
+
+        <View style={styles.pinnedMenuModeRow}>
+          <TouchableOpacity
+            style={[
+              styles.pinnedMenuModeCard,
+              pinnedMenuDraft.mode === 'auto' && styles.pinnedMenuModeCardActive,
+            ]}
+            onPress={handleGeneratePinnedMenuDraft}
+          >
+            <View style={[styles.pinnedMenuModeIcon, styles.pinnedMenuModeIconAuto]}>
+              <Ionicons name="sparkles-outline" size={18} color={COLORS.primary} />
+            </View>
+            <Text
+              style={[
+                styles.pinnedMenuModeTitle,
+                pinnedMenuDraft.mode === 'auto' && styles.pinnedMenuModeTitleActive,
+              ]}
+            >
+              יצירה אוטומטית
+            </Text>
+            <Text style={styles.pinnedMenuModeText}>
+              לוחצים פעם אחת ונבנית טיוטה מתוך היעדים, ההערות והארוחות שכבר הוגדרו.
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[
+              styles.pinnedMenuModeCard,
+              pinnedMenuDraft.mode === 'freeform' && styles.pinnedMenuModeCardActive,
+            ]}
+            onPress={handleSwitchToFreeformPinnedMenu}
+          >
+            <View style={[styles.pinnedMenuModeIcon, styles.pinnedMenuModeIconFreeform]}>
+              <Ionicons name="create-outline" size={18} color={COLORS.info} />
+            </View>
+            <Text
+              style={[
+                styles.pinnedMenuModeTitle,
+                pinnedMenuDraft.mode === 'freeform' && styles.pinnedMenuModeTitleActive,
+              ]}
+            >
+              כתיבה חופשית
+            </Text>
+            <Text style={styles.pinnedMenuModeText}>
+              כתבי בדיוק כמו בדוגמה שלך, עם לוז יומי, חודשי, החלפות או כל ניסוח חופשי.
+            </Text>
+          </TouchableOpacity>
+        </View>
+
+        <Text style={styles.helperText}>
+          לחצי שוב על &quot;יצירה אוטומטית&quot; כדי לרענן את הטיוטה מהתוכנית הנוכחית. אחרי זה
+          אפשר לערוך או פשוט לשמור כמו שזה.
+        </Text>
+
+        <Field
+          label="כותרת התפריט"
+          value={pinnedMenuDraft.title}
+          onChangeText={value => updatePinnedMenuField('title', value)}
+          placeholder="תפריט אישי"
+        />
+        <Field
+          label="סוג התפריט / תקופה"
+          value={pinnedMenuDraft.periodLabel}
+          onChangeText={value => updatePinnedMenuField('periodLabel', value)}
+          placeholder="תפריט יומי / חודשי / לו״ז שבועי"
+        />
+        <Field
+          label="תוכן התפריט"
+          value={pinnedMenuDraft.bodyText}
+          onChangeText={value => updatePinnedMenuField('bodyText', value)}
+          placeholder="כתבי כאן את כל הלוז או התפריט בפורמט חופשי. ירידות שורה יישמרו כמו שהן."
+          multiline
+        />
+
+        <View style={styles.pinnedMenuActionRow}>
+          <TouchableOpacity
+            style={styles.pinnedMenuSecondaryBtn}
+            onPress={handleDownloadPinnedMenu}
+            disabled={!hasPinnedMenuDraft || exportingPinnedMenu}
+          >
+            <Ionicons
+              name={exportingPinnedMenu ? 'hourglass-outline' : 'download-outline'}
+              size={16}
+              color={COLORS.primary}
+            />
+            <Text style={styles.pinnedMenuSecondaryBtnText}>
+              {exportingPinnedMenu ? 'שומרת לגלריה...' : 'הורידי לגלריה'}
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.pinnedMenuSecondaryBtn}
+            onPress={handleSharePinnedMenu}
+            disabled={!hasPinnedMenuDraft || sharingPinnedMenu}
+          >
+            <Ionicons
+              name={sharingPinnedMenu ? 'hourglass-outline' : 'share-social-outline'}
+              size={16}
+              color={COLORS.info}
+            />
+            <Text style={[styles.pinnedMenuSecondaryBtnText, styles.pinnedMenuShareBtnText]}>
+              {sharingPinnedMenu ? 'פותחת שיתוף...' : 'שתפי כתמונה'}
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.pinnedMenuSecondaryBtn, styles.pinnedMenuClearBtn]}
+            onPress={clearPinnedMenuDraft}
+          >
+            <Ionicons name="trash-outline" size={16} color={COLORS.danger} />
+            <Text style={styles.pinnedMenuClearBtnText}>הסירי את התפריט מהנעוץ</Text>
+          </TouchableOpacity>
+        </View>
+
+        {hasPinnedMenuDraft ? (
+          <View style={styles.pinnedMenuPreviewWrap}>
+            <Text style={styles.fieldLabel}>כך זה ייראה למתאמנת</Text>
+            <ViewShot ref={pinnedMenuCaptureRef} style={styles.pinnedMenuCaptureSurface}>
+              <View collapsable={false}>
+                <PinnedMenuCard menu={pinnedMenuDraft} caption="תפריט אישי" />
+              </View>
+            </ViewShot>
+            <Text style={styles.helperText}>
+              אפשר לשמור את התפריט כתמונה עם הטמפלייט המלא או לשתף אותו ישירות.
+            </Text>
+          </View>
+        ) : (
+          <Text style={styles.emptyStateText}>
+            עדיין אין תפריט נעוץ. אפשר ליצור אותו אוטומטית או לכתוב אותו ידנית.
+          </Text>
+        )}
+      </SectionCard>
 
       <SectionCard
         title="פרטי תוכנית תזונה"
@@ -3987,6 +4306,97 @@ const styles = StyleSheet.create({
     marginTop: -4,
     marginBottom: 8,
     textAlign: 'right',
+  },
+  pinnedMenuActionRow: {
+    flexDirection: 'row-reverse',
+    flexWrap: 'wrap',
+    gap: 10,
+    marginTop: 4,
+  },
+  pinnedMenuCaptureSurface: {
+    width: '100%',
+  },
+  pinnedMenuClearBtn: {
+    borderColor: `${COLORS.danger}44`,
+  },
+  pinnedMenuClearBtnText: {
+    color: COLORS.danger,
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  pinnedMenuModeCard: {
+    backgroundColor: COLORS.card,
+    borderColor: COLORS.border,
+    borderRadius: 16,
+    borderWidth: 1,
+    flex: 1,
+    gap: 10,
+    padding: 14,
+  },
+  pinnedMenuModeCardActive: {
+    backgroundColor: `${COLORS.primary}14`,
+    borderColor: `${COLORS.primary}55`,
+  },
+  pinnedMenuModeIcon: {
+    alignItems: 'center',
+    alignSelf: 'flex-end',
+    borderRadius: 12,
+    height: 42,
+    justifyContent: 'center',
+    width: 42,
+  },
+  pinnedMenuModeIconAuto: {
+    backgroundColor: `${COLORS.primary}18`,
+  },
+  pinnedMenuModeIconFreeform: {
+    backgroundColor: `${COLORS.info}18`,
+  },
+  pinnedMenuModeRow: {
+    flexDirection: 'row-reverse',
+    gap: 10,
+    marginBottom: 12,
+    marginTop: 12,
+  },
+  pinnedMenuModeText: {
+    color: COLORS.textSecondary,
+    fontSize: 12,
+    lineHeight: 18,
+    textAlign: 'right',
+  },
+  pinnedMenuModeTitle: {
+    color: COLORS.white,
+    fontSize: 14,
+    fontWeight: '700',
+    textAlign: 'right',
+  },
+  pinnedMenuModeTitleActive: {
+    color: COLORS.primary,
+  },
+  pinnedMenuPreviewWrap: {
+    gap: 8,
+    marginTop: 12,
+  },
+  pinnedMenuSecondaryBtn: {
+    alignItems: 'center',
+    backgroundColor: COLORS.card,
+    borderColor: COLORS.border,
+    borderRadius: 12,
+    borderWidth: 1,
+    flex: 1,
+    flexDirection: 'row-reverse',
+    gap: 8,
+    justifyContent: 'center',
+    minWidth: 140,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+  },
+  pinnedMenuSecondaryBtnText: {
+    color: COLORS.primary,
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  pinnedMenuShareBtnText: {
+    color: COLORS.info,
   },
   flexField: {
     flex: 1,

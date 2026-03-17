@@ -53,10 +53,14 @@ CREATE TABLE IF NOT EXISTS nutrition_plans (
   notes TEXT,
   daily_targets JSONB NOT NULL DEFAULT '{}'::jsonb,
   meals JSONB NOT NULL DEFAULT '[]'::jsonb,
+  pinned_menu JSONB NOT NULL DEFAULT '{}'::jsonb,
   updated_by TEXT,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+ALTER TABLE nutrition_plans
+  ADD COLUMN IF NOT EXISTS pinned_menu JSONB NOT NULL DEFAULT '{}'::jsonb;
 
 CREATE TABLE IF NOT EXISTS workout_plans (
   id TEXT PRIMARY KEY,
