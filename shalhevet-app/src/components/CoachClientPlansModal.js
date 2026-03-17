@@ -63,6 +63,10 @@ const RECIPE_CATEGORIES = [
   RECIPE_CATEGORY_ALL,
   ...Array.from(new Set(RECIPE_CATALOG.map(recipe => recipe.category))),
 ];
+const PINNED_MENU_EXPORT_WIDTH = 360;
+const PINNED_MENU_EXPORT_HEIGHT = Math.round(
+  PINNED_MENU_EXPORT_WIDTH / PINNED_MENU_TEMPLATE_ASPECT_RATIO
+);
 
 function makeId(prefix) {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
@@ -956,7 +960,7 @@ function SummaryChip({ label, value, color = COLORS.primary }) {
 }
 
 export default function CoachClientPlansModal({ visible, clientId, onClose, onSaved }) {
-  const pinnedMenuCaptureRef = useRef(null);
+  const pinnedMenuExportRef = useRef(null);
   const [activeTab, setActiveTab] = useState('goals');
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -1224,21 +1228,16 @@ export default function CoachClientPlansModal({ visible, clientId, onClose, onSa
       throw new Error('אין עדיין תפריט מוכן להורדה.');
     }
 
-    const captureHandle = pinnedMenuCaptureRef.current;
+    const captureHandle = pinnedMenuExportRef.current;
 
     if (!captureHandle || typeof captureHandle.capture !== 'function') {
       throw new Error('התצוגה המקדימה עדיין נטענת. נסי שוב בעוד רגע.');
     }
 
-    const exportWidth = 1440;
-    const exportHeight = Math.round(exportWidth / PINNED_MENU_TEMPLATE_ASPECT_RATIO);
-
     return captureHandle.capture({
       format: 'png',
-      height: exportHeight,
       quality: 1,
       result: 'tmpfile',
-      width: exportWidth,
     });
   };
 
@@ -2783,14 +2782,23 @@ export default function CoachClientPlansModal({ visible, clientId, onClose, onSa
         {hasPinnedMenuDraft ? (
           <View style={styles.pinnedMenuPreviewWrap}>
             <Text style={styles.fieldLabel}>כך זה ייראה למתאמנת</Text>
-            <ViewShot ref={pinnedMenuCaptureRef} style={styles.pinnedMenuCaptureSurface}>
-              <View collapsable={false}>
-                <PinnedMenuCard menu={pinnedMenuDraft} caption="תפריט אישי" />
-              </View>
-            </ViewShot>
+            <View style={styles.pinnedMenuCaptureSurface}>
+              <PinnedMenuCard menu={pinnedMenuDraft} caption="תפריט אישי" />
+            </View>
             <Text style={styles.helperText}>
               אפשר לשמור את התפריט כתמונה עם הטמפלייט המלא או לשתף אותו ישירות.
             </Text>
+            <View pointerEvents="none" style={styles.hiddenPinnedMenuExportWrap}>
+              <ViewShot ref={pinnedMenuExportRef} style={styles.hiddenPinnedMenuExportSurface}>
+                <View collapsable={false} style={styles.hiddenPinnedMenuExportCard}>
+                  <PinnedMenuCard
+                    menu={pinnedMenuDraft}
+                    caption="תפריט אישי"
+                    backgroundResizeMode="cover"
+                  />
+                </View>
+              </ViewShot>
+            </View>
           </View>
         ) : (
           <Text style={styles.emptyStateText}>
@@ -4314,6 +4322,19 @@ const styles = StyleSheet.create({
     marginTop: -4,
     marginBottom: 8,
     textAlign: 'right',
+  },
+  hiddenPinnedMenuExportCard: {
+    height: PINNED_MENU_EXPORT_HEIGHT,
+    width: PINNED_MENU_EXPORT_WIDTH,
+  },
+  hiddenPinnedMenuExportSurface: {
+    height: PINNED_MENU_EXPORT_HEIGHT,
+    width: PINNED_MENU_EXPORT_WIDTH,
+  },
+  hiddenPinnedMenuExportWrap: {
+    left: -10000,
+    position: 'absolute',
+    top: 0,
   },
   pinnedMenuActionRow: {
     flexDirection: 'row-reverse',

@@ -17,7 +17,12 @@ function formatUpdatedAt(value) {
   return dateValue || '';
 }
 
-export default function PinnedMenuCard({ menu, compact = false, caption = 'תפריט נעוץ' }) {
+export default function PinnedMenuCard({
+  menu,
+  compact = false,
+  caption = 'תפריט נעוץ',
+  backgroundResizeMode = 'contain',
+}) {
   const normalizedMenu = normalizePinnedMenu(menu);
   const updatedAt = formatUpdatedAt(normalizedMenu.updatedAt);
   const isDenseContent = normalizedMenu.bodyText.length > (compact ? 220 : 320);
@@ -28,7 +33,11 @@ export default function PinnedMenuCard({ menu, compact = false, caption = 'תפ�
 
   return (
     <View style={[styles.card, compact && styles.cardCompact]}>
-      <Image source={menuTemplateImage} style={styles.backgroundImage} resizeMode="contain" />
+      <Image
+        source={menuTemplateImage}
+        style={styles.backgroundImage}
+        resizeMode={backgroundResizeMode}
+      />
       <View style={styles.overlay} />
 
       <View
