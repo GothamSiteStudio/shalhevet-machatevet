@@ -657,6 +657,7 @@ function mapClientToAccountForm(client) {
     activityLevel: client.activityLevel || '',
     clientType: client.clientType || '',
     notes: client.notes || '',
+    coachPrivateNotes: client.coachPrivateNotes || '',
     coachStatus: client.coachStatus || '',
     coachTagsText: Array.isArray(client.coachTags) ? client.coachTags.join(', ') : '',
     newPassword: '',
@@ -703,6 +704,7 @@ function serializeAccount(form) {
     activityLevel: form.activityLevel.trim(),
     clientType: normalizeClientTypeLabel(form.clientType),
     notes: form.notes.trim(),
+    coachPrivateNotes: (form.coachPrivateNotes || '').trim(),
     coachStatus: form.coachStatus.trim(),
     coachTags: form.coachTagsText
       .split(',')
@@ -2208,6 +2210,22 @@ export default function CoachClientPlansModal({ visible, clientId, onClose, onSa
           placeholder="רגישויות, מגבלות או דגשים לליווי"
           multiline
         />
+
+        <View style={{ marginTop: 8 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 6 }}>
+            <Ionicons name="lock-closed" size={14} color={COLORS.primary} />
+            <Text style={[styles.fieldLabel, { color: COLORS.primary, marginBottom: 0 }]}>
+              הערות פרטיות שלך (הלקוחה לא רואה)
+            </Text>
+          </View>
+          <Field
+            value={accountForm.coachPrivateNotes}
+            onChangeText={value => updateAccountField('coachPrivateNotes', value)}
+            placeholder="הקשר, רגישויות, היסטוריה — מה שאת לא רוצה שהלקוחה תראה"
+            multiline
+            accessibilityLabel="שדה הערות פרטיות, הלקוחה לא רואה את התוכן"
+          />
+        </View>
 
         <View style={styles.fieldGroup}>
           <Text style={styles.fieldLabel}>סטטוס חשבון</Text>

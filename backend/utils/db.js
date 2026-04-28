@@ -422,6 +422,7 @@ function mapUser(row) {
     ),
     isActive: toBoolean(row.is_active, true),
     notes: row.notes || "",
+    coachPrivateNotes: row.coach_private_notes || "",
     code: row.code || null,
     createdAt: toIsoString(row.created_at),
     updatedAt: toIsoString(row.updated_at),
@@ -904,6 +905,10 @@ async function updateUser(id, updates) {
       transform: (value) => toBoolean(value, true),
     },
     notes: { column: "notes" },
+    coachPrivateNotes: {
+      column: "coach_private_notes",
+      transform: (value) => String(value ?? ""),
+    },
     code: { column: "code" },
   };
 
@@ -1822,6 +1827,14 @@ async function deleteCoachMeal(id) {
   return mapCoachMeal(result.rows[0]);
 }
 
+async function deleteUser(id) {
+  const result = await query(
+    "DELETE FROM users WHERE id = $1 RETURNING id",
+    [id],
+  );
+  return result.rows[0] || null;
+}
+
 module.exports = {
   readDB,
   writeDB,
@@ -1864,4 +1877,5 @@ module.exports = {
   createCoachMeal,
   updateCoachMeal,
   deleteCoachMeal,
+  deleteUser,
 };

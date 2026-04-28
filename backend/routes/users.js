@@ -21,6 +21,7 @@ const {
   getNutritionPlan,
   getWorkoutPlan,
   updateUser,
+  deleteUser,
   getWeightHistory,
   addWeightEntry,
   getUpdates,
@@ -190,7 +191,7 @@ router.use(authenticate);
 
 // ─── GET /api/users/me ────────────────────────────────────────────────────────
 router.get("/me", (req, res) => {
-  const { password, ...user } = req.user;
+  const { password, coachPrivateNotes, coach_private_notes, ...user } = req.user;
   res.json({ success: true, user });
 });
 
@@ -429,7 +430,7 @@ router.put("/me", async (req, res) => {
     if (activityLevel) updates.activityLevel = activityLevel;
 
     const updated = await updateUser(req.user.id, updates);
-    const { password, ...safeUser } = updated;
+    const { password, coachPrivateNotes, coach_private_notes, ...safeUser } = updated;
 
     res.json({ success: true, user: safeUser });
   } catch (err) {
@@ -594,6 +595,23 @@ router.put("/password", async (req, res) => {
     res.json({ success: true, message: "הסיסמה עודכנה בהצלחה ✅" });
   } catch (err) {
     res.status(500).json({ error: "שגיאה בשינוי סיסמה" });
+  }
+});
+
+// מחיקת חשבון - הלקוחה מוחקת את החשבון של עצמה
+router.delete("/me", async (req, res) => {
+  try {
+    if (req.user?.role === "coach") {
+      return res.status(403).json({ error: "מאמנת לא יכולה למחוק חשבון דרך האפליקציה" });
+    }
+    const result = await deleteUser(req.user.id);
+    if (!result) {
+      return res.status(404).json({ error: "המשתמשת לא נמצאה" });
+    }
+    res.json({ success: true, message: "החשבון נמחק" });
+  } catch (err) {
+    console.error("[users] deleteUser failed", err);
+    res.status(500).json({ error: "שגיאה במחיקת חשבון" });
   }
 });
 

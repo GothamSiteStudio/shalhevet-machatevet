@@ -26,7 +26,8 @@ ALTER TABLE users
   ADD COLUMN IF NOT EXISTS habit_assignments JSONB NOT NULL DEFAULT '[]'::jsonb,
   ADD COLUMN IF NOT EXISTS check_in_template JSONB NOT NULL DEFAULT '{}'::jsonb,
   ADD COLUMN IF NOT EXISTS quick_message_templates JSONB NOT NULL DEFAULT '[]'::jsonb,
-  ADD COLUMN IF NOT EXISTS plan_template_profiles JSONB NOT NULL DEFAULT '[]'::jsonb;
+  ADD COLUMN IF NOT EXISTS plan_template_profiles JSONB NOT NULL DEFAULT '[]'::jsonb,
+  ADD COLUMN IF NOT EXISTS coach_private_notes TEXT NOT NULL DEFAULT '';
 
 CREATE INDEX IF NOT EXISTS idx_users_role ON users(role);
 

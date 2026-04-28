@@ -25,7 +25,8 @@ function generateToken(user) {
 
 // ─── פרופיל מינימלי לשליחה (ללא סיסמה!) ─────────────────────────────────────
 function safeUser(user) {
-  const { password, ...safe } = user; // מסיר את הסיסמה
+  // מסיר סיסמה והערות פרטיות של המאמנת מהתגובה ללקוחה
+  const { password, coachPrivateNotes, coach_private_notes, ...safe } = user;
   return safe;
 }
 

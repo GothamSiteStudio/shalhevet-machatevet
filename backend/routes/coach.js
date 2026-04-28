@@ -1031,14 +1031,30 @@ router.get(
     const engagementOverviewMap = await getClientEngagementOverview(
       rawClients.map((client) => client.id),
     );
+
+    // Last 10 weight points for sparkline (best-effort, ignore failures per client)
+    const weightHistories = await Promise.all(
+      rawClients.map((c) =>
+        getWeightHistory(c.id)
+          .then((rows) =>
+            (Array.isArray(rows) ? rows : [])
+              .slice(-10)
+              .map((r) => ({ weight: Number(r.weight), date: r.date }))
+              .filter((r) => Number.isFinite(r.weight)),
+          )
+          .catch(() => []),
+      ),
+    );
+
     const clients = rawClients
-      .map((client) =>
-        attachAutomationStatusToClient(
+      .map((client, idx) => ({
+        ...attachAutomationStatusToClient(
           client,
           engagementOverviewMap,
           nowTimestamp,
         ),
-      )
+        weightHistory: weightHistories[idx],
+      }))
       .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
 
     res.json({
@@ -1457,6 +1473,7 @@ router.put("/clients/:id", async (req, res) => {
       notes,
       coachStatus,
       coachTags,
+      coachPrivateNotes,
       habitAssignments,
       checkInTemplate,
       isActive,
@@ -1517,6 +1534,10 @@ router.put("/clients/:id", async (req, res) => {
     const normalizedCoachTags = parseOptionalTags(coachTags);
     if (normalizedCoachTags !== undefined)
       updates.coachTags = normalizedCoachTags;
+
+    if (coachPrivateNotes !== undefined) {
+      updates.coachPrivateNotes = String(coachPrivateNotes ?? "");
+    }
 
     const normalizedHabitAssignments =
       buildHabitAssignmentsPayload(habitAssignments);
@@ -1685,6 +1706,24 @@ router.get(
     });
 
     res.json({ success: true, messages: enriched });
+  }),
+);
+
+// ─── GET /api/coach/messages/:userId - שיחה עם לקוחה ספציפית ────────────────
+router.get(
+  "/messages/:userId",
+  asyncHandler(async (req, res) => {
+    const { userId } = req.params;
+    const client = await getClientOrNull(userId);
+    if (!client) {
+      return res.status(404).json({ error: "לקוחה לא נמצאה" });
+    }
+    const messages = await getMessages(userId);
+    res.json({
+      success: true,
+      messages,
+      clientName: client.name,
+    });
   }),
 );
 

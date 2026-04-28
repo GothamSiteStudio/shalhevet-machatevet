@@ -32,6 +32,8 @@ import { COLORS } from '../theme/colors';
 import { coachAPI, tokenStorage } from '../services/api';
 import { CATALOG_MEAL_SOURCE, mergeRecipeCatalogWithCoachMeals } from '../data/recipeCatalog';
 import CoachClientPlansModal from '../components/CoachClientPlansModal';
+import CoachClientChatModal from '../components/CoachClientChatModal';
+import MiniSparkline from '../components/MiniSparkline';
 import useStore from '../store/useStore';
 import { KEYBOARD_AVOIDING_BEHAVIOR, KEYBOARD_DISMISS_MODE } from '../utils/keyboard';
 
@@ -60,7 +62,7 @@ function getAutomationAccent(level) {
 }
 
 // ─── קומפוננטת כרטיס לקוחה ──────────────────────────────────────────────────
-function ClientCard({ client, onPress }) {
+function ClientCard({ client, onPress, onChat, onReminder, sendingReminder }) {
   const automationStatus = client.automationStatus || {};
   const automationAccent = getAutomationAccent(automationStatus.level);
   const automationBadgeText = automationStatus.daysSinceClientActivity != null
@@ -201,6 +203,69 @@ function ClientCard({ client, onPress }) {
       </View>
       <View style={styles.clientAvatar}>
         <Text style={styles.clientAvatarText}>{initials}</Text>
+      </View>
+
+      {Array.isArray(client.weightHistory) && client.weightHistory.length >= 2 ? (
+        <View style={styles.clientSparklineRow}>
+          <Ionicons name="trending-down-outline" size={14} color={COLORS.textMuted} />
+          <Text style={styles.clientSparklineLabel}>מגמת משקל</Text>
+          <MiniSparkline
+            values={client.weightHistory.slice(-10).map(w => Number(w?.weight)).filter(Boolean)}
+            width={90}
+            height={20}
+          />
+        </View>
+      ) : null}
+
+      <View style={styles.clientQuickActionsRow}>
+        <TouchableOpacity
+          style={styles.clientQuickAction}
+          onPress={e => {
+            e?.stopPropagation?.();
+            onChat?.(client);
+          }}
+          accessibilityRole="button"
+          accessibilityLabel={`שלחי הודעה ל${client.name}`}
+        >
+          <Ionicons name="chatbubble-ellipses-outline" size={16} color={COLORS.primary} />
+          <Text style={styles.clientQuickActionText}>הודעה</Text>
+        </TouchableOpacity>
+
+        {client.automationStatus?.reminder?.shouldSendNow ? (
+          <TouchableOpacity
+            style={[styles.clientQuickAction, styles.clientQuickActionAccent]}
+            disabled={sendingReminder}
+            onPress={e => {
+              e?.stopPropagation?.();
+              onReminder?.(client);
+            }}
+            accessibilityRole="button"
+            accessibilityLabel={`שלחי תזכורת ל${client.name}`}
+            accessibilityState={{ disabled: !!sendingReminder }}
+          >
+            {sendingReminder ? (
+              <ActivityIndicator size="small" color={COLORS.primary} />
+            ) : (
+              <>
+                <Ionicons name="notifications-outline" size={16} color={COLORS.primary} />
+                <Text style={styles.clientQuickActionText}>תזכורת</Text>
+              </>
+            )}
+          </TouchableOpacity>
+        ) : null}
+
+        <TouchableOpacity
+          style={styles.clientQuickAction}
+          onPress={e => {
+            e?.stopPropagation?.();
+            onPress();
+          }}
+          accessibilityRole="button"
+          accessibilityLabel={`פתחי תוכניות של ${client.name}`}
+        >
+          <Ionicons name="document-text-outline" size={16} color={COLORS.primary} />
+          <Text style={styles.clientQuickActionText}>תוכניות</Text>
+        </TouchableOpacity>
       </View>
     </TouchableOpacity>
   );
@@ -731,6 +796,8 @@ export default function CoachDashboardScreen() {
   const [showAddModal, setShowAddModal] = useState(false);
   const [selectedClientId, setSelectedClientId] = useState(null);
   const [showClientPlansModal, setShowClientPlansModal] = useState(false);
+  const [chatClient, setChatClient] = useState(null);
+  const [reminderSendingId, setReminderSendingId] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [clientFilter, setClientFilter] = useState('all');
   const [coachStatusFilter, setCoachStatusFilter] = useState('all');
@@ -1016,6 +1083,22 @@ export default function CoachDashboardScreen() {
   const closeClientModal = () => {
     setShowClientPlansModal(false);
     setSelectedClientId(null);
+  };
+
+  const handleChat = client => setChatClient(client);
+
+  const handleReminder = async client => {
+    if (!client?.id) return;
+    setReminderSendingId(client.id);
+    try {
+      await coachAPI.sendAutomationReminder(client.id);
+      Alert.alert('נשלחה', `תזכורת נשלחה ל${client.name} ✅`);
+      loadData();
+    } catch (err) {
+      Alert.alert('שגיאה', err.message || 'תזכורת לא נשלחה');
+    } finally {
+      setReminderSendingId(null);
+    }
   };
 
   const handleDeleteMeal = mealId => {
@@ -1359,6 +1442,9 @@ export default function CoachDashboardScreen() {
                     key={client.id}
                     client={client}
                     onPress={() => openClientModal(client.id)}
+                    onChat={handleChat}
+                    onReminder={handleReminder}
+                    sendingReminder={reminderSendingId === client.id}
                   />
                 ))
               )}
@@ -1645,6 +1731,13 @@ export default function CoachDashboardScreen() {
         onSaved={loadData}
       />
 
+      <CoachClientChatModal
+        visible={!!chatClient}
+        client={chatClient}
+        onClose={() => setChatClient(null)}
+        onMessageSent={() => loadData()}
+      />
+
       <CoachMealEditorModal
         visible={showMealEditor}
         onClose={closeMealEditor}
@@ -1799,6 +1892,51 @@ const styles = StyleSheet.create({
   clientStatus: { borderRadius: 10, paddingHorizontal: 8, paddingVertical: 3 },
   clientStatusText: { fontSize: 10, fontWeight: '600' },
   clientWeight: { color: COLORS.primary, fontSize: 13, fontWeight: '600' },
+
+  clientSparklineRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.border,
+  },
+  clientSparklineLabel: {
+    color: COLORS.textMuted,
+    fontSize: 11,
+    flex: 1,
+    textAlign: 'right',
+  },
+
+  clientQuickActionsRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 10,
+  },
+  clientQuickAction: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    minHeight: 40,
+    backgroundColor: COLORS.cardLight,
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  clientQuickActionAccent: {
+    borderColor: COLORS.primary + '55',
+    backgroundColor: COLORS.primary + '15',
+  },
+  clientQuickActionText: {
+    color: COLORS.text,
+    fontSize: 12,
+    fontWeight: '600',
+  },
 
   content: { paddingBottom: 32, paddingHorizontal: 16 },
 
