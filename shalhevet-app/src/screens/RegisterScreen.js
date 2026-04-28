@@ -164,7 +164,7 @@ export default function RegisterScreen({ navigation }) {
             <Ionicons name="arrow-forward" size={24} color={COLORS.white} />
           </TouchableOpacity>
 
-          <Text style={styles.title}>הצטרפות לשלהבת 🔥</Text>
+          <Text style={styles.title} accessibilityRole="header">הצטרפות לשלהבת 🔥</Text>
           <Text style={styles.subtitle}>
             {step === 1 ? 'צרי חשבון בחינם' : 'פרטים נוספים (אופציונלי)'}
           </Text>

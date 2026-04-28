@@ -824,7 +824,7 @@ export default function FoodDiaryScreen({ navigation }) {
           <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
             <Ionicons name="arrow-forward" size={24} color={COLORS.white} />
           </TouchableOpacity>
-          <Text style={styles.pageTitle}>יומן אכילה</Text>
+          <Text style={styles.pageTitle} accessibilityRole="header">יומן אכילה</Text>
           <View style={{ width: 36 }} />
         </View>
 

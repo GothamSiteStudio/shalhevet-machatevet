@@ -204,27 +204,45 @@ function AIModal({ visible, onClose, onAction }) {
     { id: 'alt', icon: 'swap-horizontal', label: 'חלופה לארוחה ב-AI', color: '#FFA726' },
   ];
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <TouchableOpacity style={styles.aiOverlay} activeOpacity={1} onPress={onClose}>
+    <Modal
+      visible={visible}
+      transparent
+      animationType="slide"
+      onRequestClose={onClose}
+      accessibilityViewIsModal
+    >
+      <TouchableOpacity
+        style={styles.aiOverlay}
+        activeOpacity={1}
+        onPress={onClose}
+        accessibilityLabel="סגור חלון AI"
+      >
         <View style={styles.aiSheet}>
           <View style={styles.modalHandle} />
-          <Text style={styles.aiTitle}>✨ פעולות AI</Text>
-          <Text style={styles.aiSubtitle}>מה תרצי לעשות?</Text>
+          <Text style={styles.aiTitle} accessibilityRole="header">
+            ✨ פעולות AI
+          </Text>
+          <Text style={styles.aiSubtitle}>בקרוב — בדרך! בינתיים אפשר להוסיף ידנית.</Text>
           {actions.map(a => (
-            <TouchableOpacity
+            <View
               key={a.id}
-              style={[styles.aiAction, { borderColor: a.color + '44' }]}
-              onPress={() => {
-                onAction(a.id);
-                onClose();
-              }}
+              style={[styles.aiAction, { borderColor: a.color + '44', opacity: 0.55 }]}
+              accessibilityRole="button"
+              accessibilityState={{ disabled: true }}
+              accessibilityLabel={`${a.label} — בקרוב`}
             >
               <View style={[styles.aiActionIcon, { backgroundColor: a.color + '22' }]}>
                 <Ionicons name={a.icon} size={22} color={a.color} />
               </View>
-              <Text style={styles.aiActionText}>{a.label}</Text>
-              <Ionicons name="chevron-back" size={16} color={COLORS.textMuted} />
-            </TouchableOpacity>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.aiActionText}>{a.label}</Text>
+                <Text
+                  style={{ color: COLORS.textMuted, fontSize: 12, marginTop: 2, textAlign: 'right' }}
+                >
+                  🔒 בקרוב
+                </Text>
+              </View>
+            </View>
           ))}
         </View>
       </TouchableOpacity>
@@ -373,7 +391,7 @@ export default function NutritionScreen({ navigation }) {
         }
       >
         {/* Title */}
-        <Text style={styles.pageTitle}>תזונה</Text>
+        <Text style={styles.pageTitle} accessibilityRole="header">תזונה</Text>
 
         {loadError ? (
           <View style={styles.noticeCard}>
@@ -419,9 +437,17 @@ export default function NutritionScreen({ navigation }) {
           <View style={styles.budgetCard}>
             <View style={styles.budgetTop}>
               <Text style={styles.budgetLabel}>
-                {dailyTargets.calories > 0 ? 'קלוריות שנותרו היום' : 'קלוריות שנאכלו היום'}
+                {dailyTargets.calories <= 0
+                  ? 'קלוריות שנאכלו היום'
+                  : remainingCalories <= 0 && dailyTargets.calories > 0
+                    ? 'יעד הקלוריות הושג! 🎉'
+                    : remainingCalories <= 50
+                      ? 'כמעט ביעד 💪'
+                      : 'קלוריות שנותרו היום'}
               </Text>
-              <Text style={styles.budgetValue}>{Math.round(remainingCalories)}</Text>
+              <Text style={styles.budgetValue}>
+                {Math.round(Math.max(remainingCalories, 0))}
+              </Text>
               <Text style={styles.budgetTotal}>
                 {dailyTargets.calories > 0
                   ? `מתוך יעד ${Math.round(dailyTargets.calories)}`

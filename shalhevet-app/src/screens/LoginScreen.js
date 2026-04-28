@@ -284,24 +284,26 @@ export default function LoginScreen({ navigation }) {
               <View style={styles.dividerLine} />
             </View>
 
-            {/* Demo Button */}
-            <TouchableOpacity
-              style={styles.demoBtn}
-              onPress={handleDemo}
-              activeOpacity={0.85}
-              accessible={true}
-              accessibilityLabel="כניסה לדמו ללא הרשמה"
-              accessibilityRole="button"
-              accessibilityHint="כניסה לגרסת ניסיון של האפליקציה"
-            >
-              <Ionicons
-                name="play-circle-outline"
-                size={18}
-                color={COLORS.primary}
-                accessible={false}
-              />
-              <Text style={styles.demoBtnText}>כניסה לדמו (ללא הרשמה)</Text>
-            </TouchableOpacity>
+            {/* Demo Button — dev only */}
+            {__DEV__ ? (
+              <TouchableOpacity
+                style={styles.demoBtn}
+                onPress={handleDemo}
+                activeOpacity={0.85}
+                accessible={true}
+                accessibilityLabel="כניסה לדמו ללא הרשמה"
+                accessibilityRole="button"
+                accessibilityHint="כניסה לגרסת ניסיון של האפליקציה"
+              >
+                <Ionicons
+                  name="play-circle-outline"
+                  size={18}
+                  color={COLORS.primary}
+                  accessible={false}
+                />
+                <Text style={styles.demoBtnText}>כניסה לדמו (ללא הרשמה)</Text>
+              </TouchableOpacity>
+            ) : null}
           </View>
 
           <Text style={styles.footer} accessible={true}>

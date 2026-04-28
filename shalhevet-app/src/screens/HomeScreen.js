@@ -449,7 +449,21 @@ export default function HomeScreen({ navigation }) {
               caption="נעוץ מהמאמנת"
             />
           </TouchableOpacity>
-        ) : null}
+        ) : (
+          <View style={[styles.pinnedMenuCard, { paddingVertical: 24 }]}>
+            <View style={styles.pinnedMenuHeader}>
+              <View style={styles.pinnedMenuHeaderText}>
+                <Text style={styles.pinnedMenuTitle}>טרם נעוץ תפריט</Text>
+                <Text style={styles.pinnedMenuSubtitle}>
+                  שלהבת תקבע לך תפריט מותאם בקרוב 💛
+                </Text>
+              </View>
+              <View style={styles.pinnedMenuIconWrap}>
+                <Ionicons name="time-outline" size={18} color={COLORS.textMuted} />
+              </View>
+            </View>
+          </View>
+        )}
 
         <TouchableOpacity
           style={styles.calorieCard}

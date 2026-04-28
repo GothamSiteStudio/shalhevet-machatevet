@@ -1,6 +1,7 @@
 {
   "cli": {
-    "version": ">= 7.0.0"
+    "version": ">= 7.0.0",
+    "appVersionSource": "remote"
   },
   "build": {
     "development": {
@@ -23,6 +24,8 @@
       }
     },
     "production": {
+      "autoIncrement": true,
+      "ios": {},
       "android": {
         "buildType": "app-bundle"
       }
@@ -30,6 +33,11 @@
   },
   "submit": {
     "production": {
+      "ios": {
+        "appleId": "oren.siyonov@hotmail.com",
+        "appleTeamId": "6547K72BC3",
+        "ascAppId": "6764217433"
+      },
       "android": {
         "serviceAccountKeyPath": "./google-service-account.json",
         "track": "internal"

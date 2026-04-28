@@ -370,8 +370,14 @@ export default function ProfileScreen() {
         text: 'מחק חשבון',
         style: 'destructive',
         onPress: async () => {
-          await tokenStorage.remove();
-          logout();
+          try {
+            await usersAPI.deleteAccount();
+            await tokenStorage.remove();
+            logout();
+            Alert.alert('החשבון נמחק', 'החשבון שלך הוסר לצמיתות. שלום ולהתראות.');
+          } catch (err) {
+            Alert.alert('שגיאה', err.message || 'לא הצלחנו למחוק את החשבון. נסי שוב או פני לתמיכה.');
+          }
         },
       },
     ]);
@@ -384,7 +390,7 @@ export default function ProfileScreen() {
   return (
     <SafeAreaView style={styles.safe}>
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.container}>
-        <Text style={styles.pageTitle}>פרופיל</Text>
+        <Text style={styles.pageTitle} accessibilityRole="header">פרופיל</Text>
 
         {/* Profile Card */}
         <View style={styles.profileCard}>

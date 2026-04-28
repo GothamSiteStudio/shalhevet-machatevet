@@ -117,6 +117,9 @@ export const usersAPI = {
   // שינוי סיסמה
   changePassword: (currentPassword, newPassword) =>
     apiRequest('PUT', '/users/password', { currentPassword, newPassword }),
+
+  // מחיקת חשבון
+  deleteAccount: () => apiRequest('DELETE', '/users/me'),
 };
 
 // ─── COACH API ───────────────────────────────────────────────────────────────
@@ -168,6 +171,7 @@ export const coachAPI = {
   getPlanTemplates: () => apiRequest('GET', '/coach/plan-templates'),
   updatePlanTemplates: profiles => apiRequest('PUT', '/coach/plan-templates', { profiles }),
   getMessages: () => apiRequest('GET', '/coach/messages'),
+  getClientMessages: userId => apiRequest('GET', `/coach/messages/${userId}`),
   sendMessage: (userId, text) => apiRequest('POST', `/coach/messages/${userId}`, { text }),
 
   // סטטיסטיקות

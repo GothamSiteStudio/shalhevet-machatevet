@@ -10,7 +10,10 @@
  */
 
 // ─── 🔧 שנה את השורה הזו בלבד ──────────────────────────────────────────────
-const MANUAL_ENV = 'local'; // 'local' | 'tunnel' | 'production'
+// בפיתוח (Expo Go) ברירת מחדל היא 'local'.
+// ב-build אמיתי (__DEV__ === false) ברירת מחדל היא 'production'.
+// אפשר לעקוף תמיד דרך .env: EXPO_PUBLIC_APP_ENV=tunnel/local/production
+const MANUAL_ENV = __DEV__ ? 'local' : 'production';
 // ─────────────────────────────────────────────────────────────────────────────
 
 const ENV = process.env.EXPO_PUBLIC_APP_ENV || MANUAL_ENV;
@@ -30,9 +33,9 @@ const CONFIG = {
   },
 
   production: {
-    // כתובת שרת הענן לאחר פרסום ל-Railway
+    // כתובת שרת הענן ב-Railway (Backend) + Neon (DB)
     API_URL:
-      process.env.EXPO_PUBLIC_API_URL || 'https://REPLACE_WITH_RAILWAY_URL.up.railway.app/api',
+      process.env.EXPO_PUBLIC_API_URL || 'https://shalhevet-machatevet-production.up.railway.app/api',
     label: 'Production (Railway)',
   },
 };

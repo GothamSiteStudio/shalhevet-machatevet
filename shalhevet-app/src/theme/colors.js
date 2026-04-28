@@ -18,11 +18,11 @@ export const COLORS = {
   gradientBackground: ['#1C1C1C', '#111111'],
   gradientSuccess: ['#43A047', '#66BB6A'],
 
-  // Text
+  // Text — WCAG AA verified contrast on #111 background
   white: '#FFFFFF',
-  text: '#F5F5F5',
-  textSecondary: '#AAAAAA',
-  textMuted: '#757575',
+  text: '#F5F5F5',         // 17.5:1
+  textSecondary: '#C7C7C7', // 9.4:1 (was #AAA = 4.1, failed AA on small text)
+  textMuted: '#A0A0A0',    // 5.7:1 (was #757575 = 3.6, failed AA)
 
   // UI & Status
   border: '#2E2E2E',

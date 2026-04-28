@@ -93,7 +93,15 @@ export default function WorkoutScreen() {
               ))}
             </View>
             <Text style={styles.workoutCount}>
-              {workoutCount} מתוך 7 ימים הושלמו
+              {workoutCount === 0
+                ? 'מתחילים שבוע חדש 💪'
+                : workoutCount >= 7
+                  ? 'שבוע מושלם! את אלופה 🏆'
+                  : workoutCount >= 5
+                    ? `${workoutCount} מתוך 7 ימים — את ברצף 🔥`
+                    : workoutCount >= 3
+                      ? `${workoutCount} מתוך 7 ימים — מצוין, ממשיכים!`
+                      : `${workoutCount} מתוך 7 ימים הושלמו`}
             </Text>
             {/* Progress bar */}
             <View style={styles.progressBg}>
@@ -177,7 +185,10 @@ export default function WorkoutScreen() {
             {/* Steps progress */}
             <View style={styles.stepsGoalRow}>
               <Text style={styles.stepsGoalText}>יעד: 10,000 צעדים</Text>
-              <Text style={styles.stepsGoalPct}>{Math.round((dailySteps / 10000) * 100)}%</Text>
+              <Text style={styles.stepsGoalPct}>
+                {Math.min(Math.round((dailySteps / 10000) * 100), 100)}%
+                {dailySteps >= 10000 ? ' 🎉' : ''}
+              </Text>
             </View>
             <View style={styles.progressBg}>
               <View

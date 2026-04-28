@@ -1,52 +1,68 @@
 import React, { useEffect, useRef } from 'react';
-import { View, Image, StyleSheet, Animated, Dimensions } from 'react-native';
+import { View, Image, StyleSheet, Animated, Pressable } from 'react-native';
 import { COLORS } from '../theme/colors';
+import { useReducedMotion } from '../utils/accessibility';
 
-const { width, height } = Dimensions.get('window');
+const SPLASH_DURATION = 2500;
 
 export default function SplashScreen({ navigation }) {
   const logoScale = useRef(new Animated.Value(0.3)).current;
   const logoOpacity = useRef(new Animated.Value(0)).current;
   const textOpacity = useRef(new Animated.Value(0)).current;
+  const reduceMotion = useReducedMotion();
 
   useEffect(() => {
     let active = true;
 
-    Animated.sequence([
-      Animated.parallel([
-        Animated.spring(logoScale, {
+    if (reduceMotion) {
+      logoScale.setValue(1);
+      logoOpacity.setValue(1);
+      textOpacity.setValue(1);
+    } else {
+      Animated.sequence([
+        Animated.parallel([
+          Animated.spring(logoScale, {
+            toValue: 1,
+            tension: 50,
+            friction: 7,
+            useNativeDriver: true,
+          }),
+          Animated.timing(logoOpacity, {
+            toValue: 1,
+            duration: 600,
+            useNativeDriver: true,
+          }),
+        ]),
+        Animated.timing(textOpacity, {
           toValue: 1,
-          tension: 50,
-          friction: 7,
+          duration: 500,
           useNativeDriver: true,
         }),
-        Animated.timing(logoOpacity, {
-          toValue: 1,
-          duration: 600,
-          useNativeDriver: true,
-        }),
-      ]),
-      Animated.timing(textOpacity, {
-        toValue: 1,
-        duration: 500,
-        useNativeDriver: true,
-      }),
-    ]).start();
+      ]).start();
+    }
 
     const timer = setTimeout(() => {
       if (active) {
         navigation.replace('Login');
       }
-    }, 2500);
+    }, reduceMotion ? 600 : SPLASH_DURATION);
 
     return () => {
       active = false;
       clearTimeout(timer);
     };
-  }, [logoOpacity, logoScale, navigation, textOpacity]);
+  }, [logoOpacity, logoScale, navigation, textOpacity, reduceMotion]);
+
+  const skip = () => navigation.replace('Login');
 
   return (
-    <View style={styles.container}>
+    <Pressable
+      style={styles.container}
+      onPress={skip}
+      accessibilityRole="button"
+      accessibilityLabel="לחיצה לדילוג על מסך הפתיחה"
+      accessibilityHint="פותח את מסך ההתחברות"
+    >
       <Animated.View
         style={[styles.logoContainer, { opacity: logoOpacity, transform: [{ scale: logoScale }] }]}
       >
@@ -63,7 +79,7 @@ export default function SplashScreen({ navigation }) {
         <View style={styles.dot} />
         <View style={styles.dot} />
       </View>
-    </View>
+    </Pressable>
   );
 }
 

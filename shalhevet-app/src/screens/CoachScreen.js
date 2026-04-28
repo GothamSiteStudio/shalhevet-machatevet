@@ -601,7 +601,7 @@ export default function CoachScreen() {
   return (
     <SafeAreaView style={styles.safe}>
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.container}>
-        <Text style={styles.pageTitle}>דף מאמן</Text>
+        <Text style={styles.pageTitle} accessibilityRole="header">דף מאמן</Text>
 
         {syncNotice ? (
           <View style={styles.noticeCard}>

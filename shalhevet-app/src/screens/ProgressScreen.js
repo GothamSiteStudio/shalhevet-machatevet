@@ -201,7 +201,7 @@ export default function ProgressScreen({ navigation }) {
               <Ionicons name="chevron-forward" size={24} color={COLORS.white} />
             </TouchableOpacity>
           )}
-          <Text style={styles.pageTitle}>התקדמות</Text>
+          <Text style={styles.pageTitle} accessibilityRole="header">התקדמות</Text>
         </View>
 
         {/* Weight Chart */}
