@@ -6,6 +6,7 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
+  Image,
   TextInput,
   TouchableOpacity,
   StyleSheet,
@@ -65,9 +66,13 @@ function ExerciseCard({ item, onPress }) {
       accessibilityLabel={a11y}
       accessibilityHint="לחצי לצפייה בפרטי התרגיל"
     >
-      <View style={styles.exIcon}>
-        <Ionicons name="barbell-outline" size={24} color={COLORS.primary} />
-      </View>
+      {item.imageUrl ? (
+        <Image source={{ uri: item.imageUrl }} style={styles.exThumb} resizeMode="cover" accessible={false} />
+      ) : (
+        <View style={styles.exIcon}>
+          <Ionicons name="barbell-outline" size={24} color={COLORS.primary} />
+        </View>
+      )}
       <View style={{ flex: 1 }}>
         <Text style={styles.exName}>{item.name}</Text>
         {muscles.length ? (
@@ -268,6 +273,15 @@ export default function ExerciseLibraryScreen({ navigation }) {
             <View style={styles.handle} />
             {detail ? (
               <ScrollView showsVerticalScrollIndicator={false}>
+                {detail.imageUrl ? (
+                  <Image
+                    source={{ uri: detail.imageUrl }}
+                    style={styles.detailImage}
+                    resizeMode="contain"
+                    accessible
+                    accessibilityLabel={`תמונת התרגיל ${detail.name}`}
+                  />
+                ) : null}
                 <Text style={styles.sheetTitle} accessibilityRole="header">{detail.name}</Text>
                 {Array.isArray(detail.muscleGroups) && detail.muscleGroups.length ? (
                   <>
@@ -319,6 +333,7 @@ const styles = StyleSheet.create({
   chipTextActive: { color: COLORS.primary, fontWeight: '600' },
   chipsRow: { flexDirection: 'row-reverse', gap: 8, paddingHorizontal: 16 },
   chipsScroll: { marginTop: 12, maxHeight: 44 },
+  detailImage: { backgroundColor: COLORS.cardLight, borderRadius: 12, height: 240, marginBottom: 12, width: '100%' },
   detailText: { color: COLORS.text, fontSize: 15, lineHeight: 22, textAlign: 'right' },
   emptyText: { color: COLORS.textSecondary, fontSize: 14, textAlign: 'center' },
   emptyTitle: { color: COLORS.white, fontSize: 17, fontWeight: 'bold', marginTop: 8 },
@@ -337,6 +352,7 @@ const styles = StyleSheet.create({
   exIcon: { alignItems: 'center', backgroundColor: '#E5393522', borderRadius: 12, height: 46, justifyContent: 'center', width: 46 },
   exMeta: { color: COLORS.textMuted, fontSize: 12, marginTop: 6, textAlign: 'right' },
   exName: { color: COLORS.white, fontSize: 16, fontWeight: 'bold', textAlign: 'right' },
+  exThumb: { backgroundColor: COLORS.cardLight, borderRadius: 12, height: 46, width: 46 },
   handle: { alignSelf: 'center', backgroundColor: COLORS.borderLight, borderRadius: 2, height: 4, marginBottom: 14, width: 40 },
   header: {
     alignItems: 'center',
