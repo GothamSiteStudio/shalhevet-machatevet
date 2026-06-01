@@ -43,17 +43,17 @@ function TabIcon({ name, library, focused, label }) {
   );
 }
 
-const tabNavScreenOptions = {
+const tabNavScreenOptions = () => ({
   headerShown: false,
   tabBarHideOnKeyboard: true,
   tabBarStyle: styles.tabBar,
   tabBarShowLabel: false,
-};
+});
 
 // ─── טאבים למתאמנת ───────────────────────────────────────────────
 function MainTabs() {
   return (
-    <Tab.Navigator screenOptions={tabNavScreenOptions}>
+    <Tab.Navigator screenOptions={tabNavScreenOptions()}>
       <Tab.Screen
         name="Home"
         component={HomeScreen}
@@ -115,7 +115,7 @@ function MainTabs() {
 // ─── טאבים למאמנת: "שלהבת" (הדשבורד הקיים) + "All-in-Fit" ─────────
 function CoachTabs() {
   return (
-    <CoachTab.Navigator screenOptions={tabNavScreenOptions}>
+    <CoachTab.Navigator screenOptions={tabNavScreenOptions()}>
       <CoachTab.Screen
         name="CoachHomeTab"
         component={CoachDashboardScreen}
