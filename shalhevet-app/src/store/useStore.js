@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { supabase } from '../lib/supabase';
 
 const DEFAULT_USER = {
   name: 'שלהבת',
@@ -18,7 +19,14 @@ const useStore = create((set, get) => ({
   isLoggedIn: false,
   user: { ...DEFAULT_USER },
   login: userData => set({ isLoggedIn: true, user: { ...DEFAULT_USER, ...userData } }),
-  logout: () => set({ isLoggedIn: false, user: { ...DEFAULT_USER } }),
+  logout: async () => {
+    try {
+      await supabase.auth.signOut();
+    } catch (e) {
+      // התעלמות משגיאות התנתקות
+    }
+    set({ isLoggedIn: false, user: { ...DEFAULT_USER } });
+  },
   updateUser: data => set({ user: { ...get().user, ...data } }),
 
   // ─── WEIGHT HISTORY ──────────────────────────────────────

@@ -19,9 +19,12 @@ import ProfileScreen from '../screens/ProfileScreen';
 import CoachDashboardScreen from '../screens/CoachDashboardScreen';
 import FoodDiaryScreen from '../screens/FoodDiaryScreen';
 import RecipeCatalogScreen from '../screens/RecipeCatalogScreen';
+import AllInFitHubScreen from '../screens/AllInFitHubScreen';
+import ExerciseLibraryScreen from '../screens/ExerciseLibraryScreen';
 
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
+const CoachTab = createBottomTabNavigator();
 
 function TabIcon({ name, library, focused, label }) {
   const IconComponent =
@@ -39,16 +42,17 @@ function TabIcon({ name, library, focused, label }) {
   );
 }
 
+const tabNavScreenOptions = {
+  headerShown: false,
+  tabBarHideOnKeyboard: true,
+  tabBarStyle: styles.tabBar,
+  tabBarShowLabel: false,
+};
+
+// ─── טאבים למתאמנת ───────────────────────────────────────────────
 function MainTabs() {
   return (
-    <Tab.Navigator
-      screenOptions={{
-        headerShown: false,
-        tabBarHideOnKeyboard: true,
-        tabBarStyle: styles.tabBar,
-        tabBarShowLabel: false,
-      }}
-    >
+    <Tab.Navigator screenOptions={tabNavScreenOptions}>
       <Tab.Screen
         name="Home"
         component={HomeScreen}
@@ -86,6 +90,15 @@ function MainTabs() {
         }}
       />
       <Tab.Screen
+        name="AllInFit"
+        component={AllInFitHubScreen}
+        options={{
+          tabBarIcon: ({ focused }) => (
+            <TabIcon name="sparkles" library="ionicons" focused={focused} label="All-in-Fit" />
+          ),
+        }}
+      />
+      <Tab.Screen
         name="Profile"
         component={ProfileScreen}
         options={{
@@ -95,6 +108,32 @@ function MainTabs() {
         }}
       />
     </Tab.Navigator>
+  );
+}
+
+// ─── טאבים למאמנת: "שלהבת" (הדשבורד הקיים) + "All-in-Fit" ─────────
+function CoachTabs() {
+  return (
+    <CoachTab.Navigator screenOptions={tabNavScreenOptions}>
+      <CoachTab.Screen
+        name="CoachHomeTab"
+        component={CoachDashboardScreen}
+        options={{
+          tabBarIcon: ({ focused }) => (
+            <TabIcon name="grid" library="ionicons" focused={focused} label="שלהבת" />
+          ),
+        }}
+      />
+      <CoachTab.Screen
+        name="CoachAllInFit"
+        component={AllInFitHubScreen}
+        options={{
+          tabBarIcon: ({ focused }) => (
+            <TabIcon name="sparkles" library="ionicons" focused={focused} label="All-in-Fit" />
+          ),
+        }}
+      />
+    </CoachTab.Navigator>
   );
 }
 
@@ -111,17 +150,19 @@ export default function AppNavigator() {
           <Stack.Screen name="Register" component={RegisterScreen} />
         </>
       ) : user?.role === 'coach' ? (
-        // מאמנת - לוח בקרה
+        // מאמנת — לוח בקרה עם שתי קטגוריות
         <>
-          <Stack.Screen name="CoachDashboard" component={CoachDashboardScreen} />
+          <Stack.Screen name="CoachHome" component={CoachTabs} />
+          <Stack.Screen name="ExerciseLibrary" component={ExerciseLibraryScreen} />
         </>
       ) : (
-        // לקוחה - האפליקציה הרגילה
+        // מתאמנת — האפליקציה הרגילה + קטגוריית All-in-Fit
         <>
           <Stack.Screen name="Main" component={MainTabs} />
           <Stack.Screen name="Progress" component={ProgressScreen} />
           <Stack.Screen name="FoodDiary" component={FoodDiaryScreen} />
           <Stack.Screen name="RecipeCatalog" component={RecipeCatalogScreen} />
+          <Stack.Screen name="ExerciseLibrary" component={ExerciseLibraryScreen} />
         </>
       )}
     </Stack.Navigator>
@@ -139,12 +180,12 @@ const styles = StyleSheet.create({
   },
   tabItem: {
     alignItems: 'center',
-    justifyContent: 'center',
     gap: 3,
+    justifyContent: 'center',
   },
   tabLabel: {
-    fontSize: 9,
     color: COLORS.textMuted,
+    fontSize: 9,
     fontWeight: '500',
   },
   tabLabelActive: {
