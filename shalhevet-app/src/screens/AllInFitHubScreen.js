@@ -19,7 +19,7 @@ const FEATURES = [
     sub: 'מאגר תרגילים עם הסברים, שרירים וציוד',
     live: true,
   },
-  { key: 'workouts', icon: 'fitness-outline', title: 'מעקב אימונים', sub: 'סטים, חזרות, שיאים ורצף שבועי', live: false },
+  { key: 'workouts', route: 'WorkoutTracker', icon: 'fitness-outline', title: 'מעקב אימונים', sub: 'סטים, חזרות, שיאים ורצף שבועי', live: true },
   { key: 'measurements', icon: 'body-outline', title: 'מדידות גוף', sub: 'היקפים, אחוז שומן ומעקב לאורך זמן', live: false },
   { key: 'photos', icon: 'camera-outline', title: 'תמונות התקדמות', sub: 'לפני / אחרי והשוואות', live: false },
   { key: 'barcode', icon: 'barcode-outline', title: 'סריקת ברקוד', sub: 'זיהוי מזון מהיר ויומן תזונה', live: false },

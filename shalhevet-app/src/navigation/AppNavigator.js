@@ -21,6 +21,7 @@ import FoodDiaryScreen from '../screens/FoodDiaryScreen';
 import RecipeCatalogScreen from '../screens/RecipeCatalogScreen';
 import AllInFitHubScreen from '../screens/AllInFitHubScreen';
 import ExerciseLibraryScreen from '../screens/ExerciseLibraryScreen';
+import WorkoutTrackerScreen from '../screens/WorkoutTrackerScreen';
 
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -154,6 +155,7 @@ export default function AppNavigator() {
         <>
           <Stack.Screen name="CoachHome" component={CoachTabs} />
           <Stack.Screen name="ExerciseLibrary" component={ExerciseLibraryScreen} />
+          <Stack.Screen name="WorkoutTracker" component={WorkoutTrackerScreen} />
         </>
       ) : (
         // מתאמנת — האפליקציה הרגילה + קטגוריית All-in-Fit
@@ -163,6 +165,7 @@ export default function AppNavigator() {
           <Stack.Screen name="FoodDiary" component={FoodDiaryScreen} />
           <Stack.Screen name="RecipeCatalog" component={RecipeCatalogScreen} />
           <Stack.Screen name="ExerciseLibrary" component={ExerciseLibraryScreen} />
+          <Stack.Screen name="WorkoutTracker" component={WorkoutTrackerScreen} />
         </>
       )}
     </Stack.Navigator>

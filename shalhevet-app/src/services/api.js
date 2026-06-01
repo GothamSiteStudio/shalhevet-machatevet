@@ -808,3 +808,97 @@ export const exercisesAPI = {
     return { success: true };
   },
 };
+
+// ───────────────────────── WORKOUTS (All-in-Fit) ─────────────────────────
+function computeVolume(exercises) {
+  let v = 0;
+  (exercises || []).forEach(ex =>
+    (ex.sets || []).forEach(s => {
+      v += (Number(s.reps) || 0) * (Number(s.weight) || 0);
+    })
+  );
+  return v;
+}
+
+function isoWeekKey(value) {
+  const date = new Date(value);
+  const tmp = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+  const day = tmp.getUTCDay() || 7;
+  tmp.setUTCDate(tmp.getUTCDate() + 4 - day);
+  const yearStart = new Date(Date.UTC(tmp.getUTCFullYear(), 0, 1));
+  const week = Math.ceil(((tmp - yearStart) / 86400000 + 1) / 7);
+  return `${tmp.getUTCFullYear()}-W${String(week).padStart(2, '0')}`;
+}
+
+export const workoutsAPI = {
+  list: async () => {
+    const uid = await currentUserId();
+    const { data, error } = await supabase
+      .from('workout_sessions')
+      .select('*')
+      .eq('user_id', uid)
+      .order('performed_at', { ascending: false });
+    check(error);
+    return { success: true, sessions: mapRows(data) };
+  },
+  create: async data => {
+    const uid = await currentUserId();
+    const exercises = Array.isArray(data.exercises) ? data.exercises : [];
+    const { data: row, error } = await supabase
+      .from('workout_sessions')
+      .insert({
+        user_id: uid,
+        performed_at: data.performedAt || new Date().toISOString(),
+        duration_seconds: data.durationSeconds || null,
+        total_volume: computeVolume(exercises),
+        exercises,
+        notes: data.notes || '',
+      })
+      .select()
+      .single();
+    check(error);
+    return { success: true, session: keysToCamel(row) };
+  },
+  remove: async id => {
+    const { error } = await supabase.from('workout_sessions').delete().eq('id', id);
+    check(error);
+    return { success: true };
+  },
+  stats: async () => {
+    const uid = await currentUserId();
+    const { data, error } = await supabase.from('workout_sessions').select('*').eq('user_id', uid);
+    check(error);
+    const sessions = data || [];
+    const weeks = new Set(sessions.map(s => isoWeekKey(s.performed_at)));
+    const thisWeek = isoWeekKey(new Date().toISOString());
+    const thisWeekCount = sessions.filter(s => isoWeekKey(s.performed_at) === thisWeek).length;
+    let streak = 0;
+    const cursor = new Date();
+    for (let guard = 0; guard < 520; guard += 1) {
+      if (weeks.has(isoWeekKey(cursor.toISOString()))) {
+        streak += 1;
+        cursor.setDate(cursor.getDate() - 7);
+      } else {
+        break;
+      }
+    }
+    const totalVolume = sessions.reduce((sum, s) => sum + (Number(s.total_volume) || 0), 0);
+    const prMap = {};
+    sessions.forEach(s =>
+      (s.exercises || []).forEach(ex => {
+        const name = ex.name || 'תרגיל';
+        (ex.sets || []).forEach(set => {
+          const w = Number(set.weight) || 0;
+          if (w > 0 && (!prMap[name] || w > prMap[name])) prMap[name] = w;
+        });
+      })
+    );
+    const prs = Object.entries(prMap)
+      .map(([name, weight]) => ({ name, weight }))
+      .sort((a, b) => b.weight - a.weight);
+    return {
+      success: true,
+      stats: { sessionsCount: sessions.length, thisWeekCount, streak, totalVolume, prs },
+    };
+  },
+};
